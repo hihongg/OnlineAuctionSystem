@@ -59,6 +59,15 @@ public class AuctionService {
             if (bidAmount <= currentMaxPrice) {
                 throw new Exception("Thất bại: Giá đặt (" + bidAmount + ") phải cao hơn giá hiện tại (" + currentMaxPrice + ")!");
             }
+            long minutesRemaining = java.time.Duration.between(java.time.LocalDateTime.now(), auction.getEndTime()).toMinutes();
+
+            // Nếu thời gian còn lại dưới 1 phút mà có người đặt giá hợp lệ
+            if (minutesRemaining < 1 && minutesRemaining >= 0) {
+                // Tự động cộng thêm 5 phút vào thời gian kết thúc
+                java.time.LocalDateTime newEndTime = auction.getEndTime().plusMinutes(5);
+                auction.setEndTime(newEndTime);
+                System.out.println("[Anti-sniping] Phút chót có người đặt giá! Phiên đấu giá được gia hạn đến: " + newEndTime);
+            }
 
             // 3. Nếu vượt qua mọi cửa ải -> Ghi nhận lượt đặt giá mới
             BidTransaction newBid = new BidTransaction(bidder, bidAmount);
@@ -70,6 +79,27 @@ public class AuctionService {
             // (Nâng cao - Chỗ này sau này Thành viên 3 sẽ gọi Socket để báo cho mọi người biết có giá mới)
 
             return true;
+        }
+    }
+    public void refreshAuctionsStatus() {
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+
+        for (Auction auction : auctionDatabase.values()) {
+            // Nếu đang OPEN mà đã quá giờ kết thúc
+            if (auction.getStatus() == AuctionStatus.OPEN && now.isAfter(auction.getEndTime())) {
+                synchronized (auction) {
+                    auction.setStatus(AuctionStatus.CLOSED);
+                    System.out.println("--- KẾT THÚC PHIÊN: " + auction.getItem().getName() + " ---");
+                }
+            }
+
+            // Nếu đang PENDING mà đã đến giờ bắt đầu thì mở phiên
+            if (auction.getStatus() == AuctionStatus.PENDING && now.isAfter(auction.getStartTime())) {
+                synchronized (auction) {
+                    auction.setStatus(AuctionStatus.OPEN);
+                    System.out.println("[Thông báo] Phiên đấu giá " + auction.getItem().getName() + " CHÍNH THỨC BẮT ĐẦU!");
+                }
+            }
         }
     }
 }
