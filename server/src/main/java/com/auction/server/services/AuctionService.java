@@ -16,7 +16,7 @@ public class AuctionService {
         this.auctionDatabase = new HashMap<>();
     }
 
-    // --- CÁC HÀM QUẢN LÝ CƠ BẢN (GIAI ĐOẠN 2) ---
+    //CÁC HÀM QUẢN LÝ CƠ BẢN
     public void addAuction(Auction auction) {
         auctionDatabase.put(auction.getId(), auction);
     }
@@ -25,7 +25,7 @@ public class AuctionService {
         return auctionDatabase.get(auctionId);
     }
 
-    // --- TRÙM CUỐI: THUẬT TOÁN ĐẶT GIÁ ĐỒNG THỜI (GIAI ĐOẠN 3) ---
+    //THUẬT TOÁN ĐẶT GIÁ ĐỒNG THỜI
     /**
      * Hàm xử lý khi có người bấm nút Đặt giá.
      * Sử dụng 'throws Exception' để ném lỗi về cho giao diện (Thành viên 1) hiển thị Popup.
@@ -36,8 +36,6 @@ public class AuctionService {
         if (auction == null) {
             throw new Exception("Lỗi: Không tìm thấy phiên đấu giá này trong hệ thống!");
         }
-
-        // TỪ KHÓA ĂN ĐIỂM CỦA GIẢNG VIÊN: synchronized
         // Khóa đối tượng 'auction' lại. Nếu 100 người cùng gọi hàm này,
         // luồng (thread) của họ sẽ phải xếp hàng chờ luồng trước chạy xong mới được vào.
         synchronized (auction) {
