@@ -25,7 +25,7 @@ public class Auction extends Entity {
         this.currentHighestBid = null; // Chưa ai đặt giá
     }
 
-    // --- TÍNH ĐÓNG GÓI CHẶT CHẼ ---
+    // TÍNH ĐÓNG GÓI CHẶT CHẼ
     // Thay vì cho phép lấy hẳn list ra để add(), ta tự viết hàm addBid() để kiểm soát
     public void addBid(BidTransaction newBid) {
         this.bidHistory.add(newBid);
