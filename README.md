@@ -6,17 +6,17 @@ Hệ thống Đấu giá Trực tuyến mô hình Client-Server sử dụng Java
 
 Dự án được chia thành 3 mảng chính, phân nhiệm vụ rõ ràng để các thành viên code song song không bị conflict:
 
-### 1. Thành viên 1: [Tên thành viên 1] - Giao diện & Trải nghiệm (Client GUI)
+### 1. Thành viên 1: [Trần Minh Đức] - Giao diện & Trải nghiệm (Client GUI)
 * Thiết kế và lập trình giao diện người dùng (Java Swing / JavaFX).
 * Bắt các sự kiện click nút (Login, Register, Place Bid).
 * Xử lý luồng hiển thị dữ liệu (cập nhật giá mới nhất, đồng hồ đếm ngược) theo thời gian thực trên màn hình Client.
 
-### 2. Thành viên 2: [Tên của bạn] - Logic cốt lõi & Xử lý Đa luồng (Core Logic & Multithreading)
+### 2. Thành viên 2: [Hoàng Như Hải] - Logic cốt lõi & Xử lý Đa luồng (Core Logic & Multithreading)
 * **Xây dựng Models (`shared/models`):** Thiết kế cấu trúc dữ liệu hướng đối tượng (OOP) cho `User`, `Bidder`, `Seller`, `Item`, `Auction`...
 * **Xử lý Đấu giá (`AuctionService`):** Viết các thuật toán xác định người thắng cuộc, kiểm tra tính hợp lệ của bước giá.
 * **Xử lý Đa luồng (Multithreading):** Giải quyết bài toán Race Condition bằng từ khóa `synchronized`, đảm bảo hệ thống không bị lỗi khi hàng trăm người cùng ấn nút "Đặt giá" vào cùng một phần nghìn giây.
 
-### 3. Thành viên 3: [Tên thành viên 3] - Mạng & Cơ sở dữ liệu (Network Socket & Database)
+### 3. Thành viên 3: [Lê Đình Việt] - Mạng & Cơ sở dữ liệu (Network Socket & Database)
 * **Kết nối Mạng (`network`):** Khởi tạo Server Socket, quản lý danh sách các Client đang kết nối, gửi/nhận tín hiệu qua lại giữa Client và Server.
 * **Quản lý CSDL (`dao` & `utils`):** Thiết lập cấu trúc Singleton kết nối MySQL (`DatabaseConnection`). Viết các lệnh truy vấn SQL (Data Access Object - DAO) để lưu trữ vĩnh viễn thông tin người dùng và lịch sử đấu giá.
 
