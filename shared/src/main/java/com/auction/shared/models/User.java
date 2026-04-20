@@ -5,6 +5,7 @@ public abstract class User extends Entity {
     protected String username;
     protected String password;
     protected String email;
+    protected String role;
 
     public User(String username, String password, String email) {
         super(); // Gọi constructor của Entity để tự tạo ID
@@ -25,4 +26,12 @@ public abstract class User extends Entity {
 
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
 }
