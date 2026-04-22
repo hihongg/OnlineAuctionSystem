@@ -4,7 +4,6 @@ import com.auction.shared.models.Auction;
 import com.auction.shared.models.AuctionStatus;
 import com.auction.shared.models.BidTransaction;
 import com.auction.shared.models.Bidder;
-
 import java.util.HashMap;
 import java.util.Map;
 
