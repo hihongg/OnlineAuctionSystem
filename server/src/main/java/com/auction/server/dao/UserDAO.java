@@ -1,3 +1,8 @@
+package com.auction.server.dao;
+
+import com.auction.server.utils.DatabaseConnection;
+import com.auction.shared.models.User;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
