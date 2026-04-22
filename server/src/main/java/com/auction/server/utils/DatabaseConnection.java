@@ -17,7 +17,7 @@ public class DatabaseConnection {
     // "auction_db" là tên cơ sở dữ liệu chúng ta sẽ tạo sau
     private static final String URL = "jdbc:mysql://localhost:3306/auction_db";
     private static final String USER = "root"; // Thay bằng username DB của bạn
-    private static final String PASSWORD = ""; // Thay bằng mật khẩu DB của bạn
+    private static final String PASSWORD = "123456"; // Thay bằng mật khẩu DB của bạn
 
     // Constructor private để ngăn việc khởi tạo từ bên ngoài
     private DatabaseConnection() {
