@@ -51,4 +51,3 @@ bin/
 # OS specific
 .DS_Store
 Thumbs.db
-out/
