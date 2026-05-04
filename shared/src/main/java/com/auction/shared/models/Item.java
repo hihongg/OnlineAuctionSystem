@@ -1,37 +1,38 @@
-package com.auction.shared.models;
+package com.auction.shared.models; // Lưu ý: Nếu project của bạn dùng com.auction.server.models thì nhớ đổi lại dòng này nhé
 
-import java.time.LocalDateTime; // Bắt buộc phải thêm dòng import này để xài thời gian
+import java.time.LocalDateTime;
 
 public class Item {
     private int id;
     private String name;
     private double startingPrice;
-    private double currentPrice;
-    private String topBidder;
 
-    // --- 2 THUỘC TÍNH MỚI THÊM VÀO ---
-    private String status = "OPEN"; // Trạng thái mặc định là đang mở bán
-    private LocalDateTime endTime;  // Thời gian chốt phiên gõ búa
+    // Đã đổi tên 2 biến này để khớp với Database và DAO của bạn
+    private double currentHighestBid;
+    private String currentHighestBidder;
 
-    // Constructor rỗng (Bắt buộc phải có để xài một số thư viện sau này)
+    private String status = "OPEN";
+    private LocalDateTime endTime;
+
+    // Constructor rỗng
     public Item() {}
 
-    // Constructor dùng để lúc Thêm Sản Phẩm mới
-    public Item(String name, double startingPrice) {
-        this.name = name;
-        this.startingPrice = startingPrice;
-        this.currentPrice = startingPrice; // Lúc mới thêm, giá hiện hành = giá khởi điểm
-        this.topBidder = "Chưa có";
-        this.status = "OPEN"; // Mới thêm vào thì tự động MỞ
-    }
-
-    // Constructor đầy đủ dùng để lấy dữ liệu từ MySQL nạp vào (Bản cũ)
-    public Item(int id, String name, double startingPrice, double currentPrice, String topBidder) {
+    // Constructor 3 tham số (Bắt buộc phải có vì ItemDAO đang gọi nó)
+    public Item(int id, String name, double startingPrice) {
         this.id = id;
         this.name = name;
         this.startingPrice = startingPrice;
-        this.currentPrice = currentPrice;
-        this.topBidder = topBidder;
+        this.currentHighestBid = startingPrice; // Mới tạo thì giá cao nhất = giá khởi điểm
+        this.currentHighestBidder = "Chưa có";
+    }
+
+    // Constructor dùng để lúc Thêm Sản Phẩm mới vào Server
+    public Item(String name, double startingPrice) {
+        this.name = name;
+        this.startingPrice = startingPrice;
+        this.currentHighestBid = startingPrice;
+        this.currentHighestBidder = "Chưa có";
+        this.status = "OPEN";
     }
 
     // --- Các hàm Getter và Setter ---
@@ -44,13 +45,13 @@ public class Item {
     public double getStartingPrice() { return startingPrice; }
     public void setStartingPrice(double startingPrice) { this.startingPrice = startingPrice; }
 
-    public double getCurrentPrice() { return currentPrice; }
-    public void setCurrentPrice(double currentPrice) { this.currentPrice = currentPrice; }
+    // Getter & Setter đã đổi tên cho chuẩn DAO
+    public double getCurrentHighestBid() { return currentHighestBid; }
+    public void setCurrentHighestBid(double currentHighestBid) { this.currentHighestBid = currentHighestBid; }
 
-    public String getTopBidder() { return topBidder; }
-    public void setTopBidder(String topBidder) { this.topBidder = topBidder; }
+    public String getCurrentHighestBidder() { return currentHighestBidder; }
+    public void setCurrentHighestBidder(String currentHighestBidder) { this.currentHighestBidder = currentHighestBidder; }
 
-    // --- GETTER & SETTER CHO 2 THUỘC TÍNH MỚI ĐỂ AUCTION SERVICE XÀI ---
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
 

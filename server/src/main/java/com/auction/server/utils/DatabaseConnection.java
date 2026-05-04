@@ -42,7 +42,7 @@ public class DatabaseConnection {
     }
 
     // Phương thức lấy đối tượng Connection để các lớp DAO sử dụng
-    public Connection getConnection() {
+    public static Connection getConnection() {
         return connection;
     }
 }
