@@ -3,25 +3,15 @@ package com.auction.server;
 import com.auction.server.services.AuctionService;
 import com.auction.shared.models.*;
 
-import java.time.LocalDateTime;
-
 public class ServerApp {
     public static void main(String[] args) {
         System.out.println("=== KHỞI ĐỘNG HỆ THỐNG TEST SERVER ===");
         AuctionService auctionService = new AuctionService();
 
         // 1. Dựng rạp: Tạo dữ liệu giả
-        Seller seller = new Seller("NguoiBan_01", "123", "seller@gmail.com");
-        Item item = new Item("Laptop Gaming RTX 4090", "Laptop siêu mạnh", 1000.0); // Giá khởi điểm 1000
-
-        Auction auction = new Auction(item, seller, LocalDateTime.now(), LocalDateTime.now().plusMinutes(10));
-        // Mở phiên luôn để test
-        auction.setStatus(AuctionStatus.OPEN);
-        auctionService.addAuction(auction);
-
-// Lấy ID thật tự động sinh ra của hệ thống
-        String realAuctionId = auction.getId();
-        System.out.println("Đã tạo phiên đấu giá: " + item.getName() + " | ID: " + realAuctionId);
+        String itemName = "Laptop Gaming RTX 4090";
+        double startingPrice = 1000.0;
+        System.out.println("Đã tạo phiên đấu giá: " + itemName + " | Giá khởi điểm: " + startingPrice);
 
         // Tạo 2 người chơi "khô máu"
         Bidder bidderA = new Bidder("Hai_A", "123", "a@gmail.com");
@@ -33,8 +23,7 @@ public class ServerApp {
         // Tạo Luồng cho người A
         Thread threadA = new Thread(() -> {
             try {
-                // SỬ DỤNG realAuctionId ở đây
-                auctionService.placeBid(realAuctionId, bidderA, 1500.0);
+                auctionService.placeBid(itemName, bidderA.getUsername(), 1500.0);
             } catch (Exception e) {
                 System.out.println("[Lỗi của A] " + e.getMessage());
             }
@@ -43,8 +32,7 @@ public class ServerApp {
         // Tạo Luồng cho người B
         Thread threadB = new Thread(() -> {
             try {
-                // SỬ DỤNG realAuctionId ở đây
-                auctionService.placeBid(realAuctionId, bidderB, 1500.0);
+                auctionService.placeBid(itemName, bidderB.getUsername(), 1500.0);
             } catch (Exception e) {
                 System.out.println("[Lỗi của B] " + e.getMessage());
             }
