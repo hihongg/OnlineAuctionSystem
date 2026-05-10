@@ -14,13 +14,6 @@
         <Button text="Logout" onAction="#handleLogout" style="-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold;"/>
     </HBox>
 
-    <TableView fx:id="auctionTable" VBox.vgrow="ALWAYS" style="-fx-background-radius: 10;">
-        <columns>
-            <TableColumn fx:id="colItemName" text="Item Name" prefWidth="400" />
-            <TableColumn fx:id="colCurrentBid" text="Current Bid ($)" prefWidth="200" />
-            <TableColumn fx:id="colTimeLeft" text="Time Left" prefWidth="240" />
-            <TableColumn fx:id="colAction" text="Action" prefWidth="120" />
-        </columns>
-    </TableView>
+    <FlowPane fx:id="itemGrid" VBox.vgrow="ALWAYS" hgap="20" vgap="20" alignment="TOP_LEFT" style="-fx-padding: 20;" />
 
 </VBox>

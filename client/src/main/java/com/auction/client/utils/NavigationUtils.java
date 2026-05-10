@@ -11,7 +11,12 @@ import java.net.URL;
 
 public class NavigationUtils {
     public void switchScene(ActionEvent event, String fxmlPath, String title) throws Exception {
-        URL url = new File(fxmlPath).toURI().toURL();
+        // Dùng getResource chuẩn xác hơn dùng File rất nhiều
+        URL url = getClass().getResource(fxmlPath);
+        if (url == null) {
+            throw new RuntimeException("Không tìm thấy file FXML: " + fxmlPath);
+        }
+
         Parent root = FXMLLoader.load(url);
         Stage stage = (Stage) ((Node) event.getSource()).getScene().getWindow();
         stage.setTitle(title);

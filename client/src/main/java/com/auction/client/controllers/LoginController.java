@@ -1,5 +1,6 @@
 package com.auction.client.controllers;
 
+import com.auction.client.utils.ClientService;
 import com.auction.client.utils.NavigationUtils;
 import javafx.fxml.FXML;
 import javafx.scene.control.PasswordField;
@@ -28,8 +29,9 @@ public class LoginController {
 
             if ("SUCCESS".equals(response)) {
                 try {
-                    navUtils.switchScene(event, "client/src/main/resources/MainDashboard.fxml", "Auction Dashboard");
+                    navUtils.switchScene(event, "/MainDashboard.fxml", "Auction Dashboard");
                 } catch (Exception e) {
+                    e.printStackTrace();
                     showAlert("System Error", "Cannot load Dashboard");
                 }
             } else {

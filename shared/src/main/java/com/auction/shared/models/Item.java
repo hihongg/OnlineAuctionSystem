@@ -1,6 +1,6 @@
 package com.auction.shared.models;
 
-public abstract class Item extends Entity {
+public class Item extends Entity {
     // Tính đóng gói (Encapsulation): private tất cả thuộc tính, dùng getter/setter [cite: 119]
     private String name;
     private String description;
@@ -15,7 +15,7 @@ public abstract class Item extends Entity {
     }
 
     // Tính trừu tượng và Đa hình: Ép các lớp con (như Electronics, Art) phải tự định nghĩa cách in thông tin [cite: 121]
-    public abstract void printInfo();
+    public void printInfo() {}
 
     // Getters và Setters
     public String getName() {

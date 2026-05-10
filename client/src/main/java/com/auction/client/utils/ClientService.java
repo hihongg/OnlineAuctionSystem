@@ -1,4 +1,4 @@
-package com.auction.client.controllers;
+package com.auction.client.utils;
 
 import java.io.*;
 import java.net.Socket;

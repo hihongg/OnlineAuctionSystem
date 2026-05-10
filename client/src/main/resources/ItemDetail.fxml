@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox alignment="TOP_CENTER" spacing="20" style="-fx-padding: 30; -fx-background-color: #f4f4f4;" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.auction.client.controllers.ItemDetailController">
+
+    <HBox alignment="CENTER_LEFT">
+        <Button text="⬅ Quay lại" onAction="#handleBackToDashboard" style="-fx-background-color: #95a5a6; -fx-text-fill: white; -fx-cursor: hand;" />
+        <Region HBox.hgrow="ALWAYS" />
+        <Label text="Chi tiết sản phẩm" style="-fx-font-size: 20px; -fx-font-weight: bold;" />
+    </HBox>
+
+    <VBox spacing="15" style="-fx-background-color: white; -fx-padding: 30; -fx-background-radius: 10; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.1), 10, 0, 0, 5);" maxWidth="500">
+        <Label fx:id="lblName" text="Tên sản phẩm" style="-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;" wrapText="true"/>
+        <Label fx:id="lblPrice" text="Giá hiện tại: $0.0" style="-fx-font-size: 18px; -fx-text-fill: #e1b12c; -fx-font-weight: bold;" />
+        <Label fx:id="lblTime" text="Thời gian còn lại: ..." style="-fx-font-size: 16px; -fx-text-fill: #e84118;" />
+
+        <Separator />
+
+        <HBox spacing="10" alignment="CENTER_LEFT">
+            <Label text="Mức giá của bạn ($):" style="-fx-font-size: 14px;" />
+            <TextField fx:id="txtBidAmount" promptText="Nhập số tiền..." prefWidth="150" />
+            <Button text="Đặt giá" onAction="#handlePlaceBid" style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;" />
+        </HBox>
+        <Label fx:id="lblMessage" text="" style="-fx-text-fill: red; -fx-font-style: italic;" />
+    </VBox>
+</VBox>
