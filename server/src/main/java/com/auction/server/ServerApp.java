@@ -1,44 +1,35 @@
 package com.auction.server;
 
-import com.auction.server.services.AuctionService;
-import com.auction.shared.models.*;
+import com.auction.server.network.AuctionServer;
+import com.auction.server.utils.DatabaseConnection; // Điều chỉnh import theo đúng package của bạn
 
 public class ServerApp {
     public static void main(String[] args) {
-        System.out.println("=== KHỞI ĐỘNG HỆ THỐNG TEST SERVER ===");
-        AuctionService auctionService = new AuctionService();
+        System.out.println("=== HỆ THỐNG ĐẤU GIÁ TRỰC TUYẾN - SERVER KHỞI ĐỘNG ===");
 
-        // 1. Dựng rạp: Tạo dữ liệu giả
-        String itemName = "Laptop Gaming RTX 4090";
-        double startingPrice = 1000.0;
-        System.out.println("Đã tạo phiên đấu giá: " + itemName + " | Giá khởi điểm: " + startingPrice);
-
-        // Tạo 2 người chơi "khô máu"
-        Bidder bidderA = new Bidder("Hai_A", "123", "a@gmail.com");
-        Bidder bidderB = new Bidder("Hoang_B", "123", "b@gmail.com");
-
-        System.out.println("\n=== BẮT ĐẦU TEST ĐẶT GIÁ ĐỒNG THỜI ===");
-        System.out.println("Tình huống: A và B cùng đặt giá 1500 vào đúng 1 thời điểm!");
-
-        // Tạo Luồng cho người A
-        Thread threadA = new Thread(() -> {
-            try {
-                auctionService.placeBid(itemName, bidderA.getUsername(), 1500.0);
-            } catch (Exception e) {
-                System.out.println("[Lỗi của A] " + e.getMessage());
+        // 1. Kiểm tra kết nối Cơ sở dữ liệu (Database)
+        try {
+            if (DatabaseConnection.getConnection() != null) {
+                System.out.println("[DB] Kết nối cơ sở dữ liệu MySQL thành công!");
             }
-        });
+        } catch (Exception e) {
+            System.err.println("[DB] Lỗi kết nối CSDL: " + e.getMessage());
+            System.err.println("[SERVER] Máy chủ không thể hoạt động nếu thiếu DB. Đang tắt hệ thống...");
+            return; // Dừng chương trình nếu không có DB
+        }
 
-        // Tạo Luồng cho người B
-        Thread threadB = new Thread(() -> {
-            try {
-                auctionService.placeBid(itemName, bidderB.getUsername(), 1500.0);
-            } catch (Exception e) {
-                System.out.println("[Lỗi của B] " + e.getMessage());
-            }
-        });
+        // 2. Thiết lập cổng (Port) cho Server
+        int port = 8080; // Bạn có thể thống nhất cổng này với các bạn làm Client
 
-        threadA.start();
-        threadB.start();
+        // 3. Khởi tạo và chạy mạng (Network Socket)
+        try {
+            AuctionServer server = new AuctionServer(port);
+            System.out.println("[SERVER] Máy chủ đã sẵn sàng. Đang lắng nghe kết nối tại cổng: " + port);
+
+            // Hàm start() sẽ có vòng lặp while(true) để liên tục nhận Client
+            server.start();
+        } catch (Exception e) {
+            System.err.println("[SERVER] Lỗi khi chạy máy chủ: " + e.getMessage());
+        }
     }
 }
