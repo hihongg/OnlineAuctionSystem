@@ -68,6 +68,24 @@ public class ItemDAO {
         return null;
     }
 
+    // 3b. Lấy item theo id (được AuctionService sử dụng)
+    public Item getItemById(int itemId) {
+        String sql = "SELECT * FROM items WHERE id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, itemId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapResultSetToItem(rs);
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Lỗi khi tìm sản phẩm theo id: " + e.getMessage());
+        }
+        return null;
+    }
+
     // 4. Cập nhật lượt Đặt giá mới (Trái tim của hệ thống)
     public boolean placeBid(String itemName, double bidAmount, String username) {
         // Cập nhật giá cao nhất và người đặt giá (Theo đúng tên cột trong DB của bạn)
@@ -101,6 +119,20 @@ public class ItemDAO {
         }
     }
 
+    // 5b. Cập nhật trạng thái theo itemId
+    public void updateStatus(int itemId, Item.Status status) {
+        String sql = "UPDATE items SET status = ? WHERE id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setString(1, status.name());
+            pstmt.setInt(2, itemId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("Lỗi khi cập nhật trạng thái theo id: " + e.getMessage());
+        }
+    }
+
     // 6. Cập nhật Thời gian kết thúc (Phục vụ chức năng Anti-sniping +5 phút)
     public void updateEndTime(String itemName, LocalDateTime newEndTime) {
         String sql = "UPDATE items SET end_time = ? WHERE name = ?";
@@ -112,6 +144,20 @@ public class ItemDAO {
             pstmt.executeUpdate();
         } catch (SQLException e) {
             System.err.println("Lỗi khi gia hạn thời gian: " + e.getMessage());
+        }
+    }
+
+    // 6b. Cập nhật thời gian kết thúc theo itemId
+    public void updateEndTime(int itemId, long newEndTime) {
+        String sql = "UPDATE items SET end_time = ? WHERE id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setTimestamp(1, new Timestamp(newEndTime));
+            pstmt.setInt(2, itemId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("Lỗi khi gia hạn thời gian theo id: " + e.getMessage());
         }
     }
 
@@ -138,10 +184,10 @@ public class ItemDAO {
         // Cố gắng Map thêm Trạng thái và Thời gian kết thúc (Bắt lỗi nếu bảng DB chưa có cột này)
         try {
             String status = rs.getString("status");
-            if (status != null) item.setStatus(status);
+            if (status != null) item.setStatus(Item.Status.valueOf(status));
 
             Timestamp endTime = rs.getTimestamp("end_time");
-            if (endTime != null) item.setEndTime(endTime.toLocalDateTime());
+            if (endTime != null) item.setEndTime(endTime.getTime());
         } catch (SQLException ignored) {
             // Bỏ qua nếu cột status hoặc end_time không tồn tại trong MySQL
         }

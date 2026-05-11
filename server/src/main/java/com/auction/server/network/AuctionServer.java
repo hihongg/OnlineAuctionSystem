@@ -1,7 +1,8 @@
 package com.auction.server.network;
 
 import com.auction.shared.models.Message;
-import com.auction.server.services.AuctionService; // Import Service của bạn
+import com.auction.server.services.AuctionService;
+
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -11,18 +12,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class AuctionServer {
-    private int port;
 
-    // Bỏ static để thiết kế thuần OOP hơn
+    private int port;
     private List<ClientHandler> connectedClients = new CopyOnWriteArrayList<>();
     private ExecutorService pool = Executors.newFixedThreadPool(50);
-
-    // Thêm AuctionService để dùng chung cho mọi Client
     private AuctionService auctionService;
 
     public AuctionServer(int port) {
         this.port = port;
-        // Khởi tạo Service, truyền chính Server này vào để Service có thể gọi hàm broadcast()
         this.auctionService = new AuctionService(this);
     }
 
@@ -36,7 +33,6 @@ public class AuctionServer {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("[SERVER] Client mới kết nối: " + clientSocket.getInetAddress());
 
-                // Truyền 'this' (AuctionServer) và auctionService vào ClientHandler
                 ClientHandler clientThread = new ClientHandler(clientSocket, this, auctionService);
                 connectedClients.add(clientThread);
                 pool.execute(clientThread);
@@ -46,7 +42,6 @@ public class AuctionServer {
         }
     }
 
-    // Bỏ static
     public void broadcast(Message message) {
         String jsonMessage = message.toJson();
         for (ClientHandler client : connectedClients) {
@@ -54,9 +49,13 @@ public class AuctionServer {
         }
     }
 
-    // Bỏ static
     public void removeClient(ClientHandler client) {
         connectedClients.remove(client);
         System.out.println("[SERVER] Một Client đã ngắt kết nối. Tổng số online: " + connectedClients.size());
+    }
+
+    public void shutdown() {
+        auctionService.shutdown();
+        pool.shutdown();
     }
 }

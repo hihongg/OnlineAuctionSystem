@@ -11,7 +11,7 @@ import java.sql.SQLException;
 public class DatabaseConnection {
     // Biến instance duy nhất
     private static DatabaseConnection instance;
-    private Connection connection;
+    private static Connection connection;
 
     // Cấu hình Database (Mặc định dùng MySQL)
     // "auction_db" là tên cơ sở dữ liệu chúng ta sẽ tạo sau
