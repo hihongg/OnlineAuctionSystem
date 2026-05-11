@@ -57,7 +57,7 @@ public class ClientHandler implements Runnable {
     // Hàm mới: Phân loại và xử lý tin nhắn
     private void handleIncomingMessage(Message msg) {
         // Giả sử class Message của bạn có thuộc tính 'type' (vd: "LOGIN", "PLACE_BID")
-        String type = msg.getType();
+        String type = msg.getAction();
 
         switch (type) {
             case "PLACE_BID":

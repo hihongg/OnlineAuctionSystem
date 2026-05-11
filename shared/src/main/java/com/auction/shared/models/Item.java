@@ -1,60 +1,78 @@
-package com.auction.shared.models; // Lưu ý: Nếu project của bạn dùng com.auction.server.models thì nhớ đổi lại dòng này nhé
+package com.auction.shared.models;
 
-import java.time.LocalDateTime;
+import java.io.Serializable;
 
-public class Item {
+public class Item implements Serializable {
+
+    public enum Status {
+        OPEN,       // Vừa tạo, chưa bắt đầu
+        RUNNING,    // Đang đấu giá
+        FINISHED,   // Đã kết thúc
+        PAID,       // Đã thanh toán
+        CANCELED    // Đã hủy
+    }
+
     private int id;
     private String name;
+    private String description;
     private double startingPrice;
-
-    // Đã đổi tên 2 biến này để khớp với Database và DAO của bạn
     private double currentHighestBid;
     private String currentHighestBidder;
+    private Status status;
+    private long endTime;           // timestamp milliseconds
+    private int sellerId;
 
-    private String status = "OPEN";
-    private LocalDateTime endTime;
-
-    // Constructor rỗng
+    // Constructor rỗng (cần cho Serialization)
     public Item() {}
 
-    // Constructor 3 tham số (Bắt buộc phải có vì ItemDAO đang gọi nó)
+    // Constructor 3 tham số (ItemDAO gọi)
     public Item(int id, String name, double startingPrice) {
         this.id = id;
         this.name = name;
         this.startingPrice = startingPrice;
-        this.currentHighestBid = startingPrice; // Mới tạo thì giá cao nhất = giá khởi điểm
+        this.currentHighestBid = startingPrice;
         this.currentHighestBidder = "Chưa có";
+        this.status = Status.OPEN;
     }
 
-    // Constructor dùng để lúc Thêm Sản Phẩm mới vào Server
-    public Item(String name, double startingPrice) {
+    // Constructor thêm sản phẩm mới
+    public Item(String name, String description, double startingPrice, long endTime, int sellerId) {
         this.name = name;
+        this.description = description;
         this.startingPrice = startingPrice;
         this.currentHighestBid = startingPrice;
         this.currentHighestBidder = "Chưa có";
-        this.status = "OPEN";
+        this.status = Status.OPEN;
+        this.endTime = endTime;
+        this.sellerId = sellerId;
     }
 
-    // --- Các hàm Getter và Setter ---
+    // ========== GETTER & SETTER ==========
+
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
 
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+
     public double getStartingPrice() { return startingPrice; }
     public void setStartingPrice(double startingPrice) { this.startingPrice = startingPrice; }
 
-    // Getter & Setter đã đổi tên cho chuẩn DAO
     public double getCurrentHighestBid() { return currentHighestBid; }
     public void setCurrentHighestBid(double currentHighestBid) { this.currentHighestBid = currentHighestBid; }
 
     public String getCurrentHighestBidder() { return currentHighestBidder; }
     public void setCurrentHighestBidder(String currentHighestBidder) { this.currentHighestBidder = currentHighestBidder; }
 
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public Status getStatus() { return status; }
+    public void setStatus(Status status) { this.status = status; }
 
-    public LocalDateTime getEndTime() { return endTime; }
-    public void setEndTime(LocalDateTime endTime) { this.endTime = endTime; }
+    public long getEndTime() { return endTime; }
+    public void setEndTime(long endTime) { this.endTime = endTime; }
+
+    public int getSellerId() { return sellerId; }
+    public void setSellerId(int sellerId) { this.sellerId = sellerId; }
 }

@@ -1,3 +1,5 @@
+package com.auction.shared.models;
+
 import com.google.gson.Gson;
 
 public class Message {
