@@ -133,6 +133,37 @@ public class AuctionService {
         }
     }
 
+    // ========== SAU KHI BidDAO TRANSACTION THÀNH CÔNG ==========
+
+    /**
+     * Được gọi từ ClientHandler sau khi BidDAO.placeBidTransaction() thành công.
+     * Chỉ lo 2 việc: anti-sniping và broadcast cho tất cả client.
+     */
+    public void handlePostBidSuccess(int itemId, String username, double bidAmount, AuctionServer server) {
+        // Anti-sniping: nếu còn dưới 60 giây, gia hạn thêm 5 phút
+        Item currentItem = itemDAO.getItemById(itemId);
+        if (currentItem != null && currentItem.getEndTime() > 0) {
+            long now = System.currentTimeMillis();
+            long remainingMs = currentItem.getEndTime() - now;
+            if (remainingMs > 0 && remainingMs < 60_000) {
+                long newEndTime = currentItem.getEndTime() + (5 * 60_000);
+                itemDAO.updateEndTime(itemId, newEndTime);
+                currentItem.setEndTime(newEndTime);
+                System.out.println("[ANTI-SNIPING] Gia hạn thêm 5 phút cho item #" + itemId);
+            }
+        }
+
+        // Cập nhật RAM để broadcast đúng giá mới
+        if (currentItem != null) {
+            currentItem.setCurrentHighestBid(bidAmount);
+            currentItem.setCurrentHighestBidder(username);
+        }
+
+        // Broadcast BID_UPDATE cho tất cả client đang xem
+        Message updateMsg = new Message("BID_UPDATE", new Gson().toJson(currentItem));
+        server.broadcast(updateMsg);
+    }
+
     // ========== DỌN DẸP ==========
 
     public void shutdown() {

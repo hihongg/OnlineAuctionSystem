@@ -43,22 +43,38 @@ public class UserDAO {
     // 2. HÀM ĐĂNG NHẬP (Khớp với lệnh authenticateUser trong file Test)
     // =========================================================================
     public boolean authenticateUser(String username, String password) {
-        // SQL Kiểm tra xem có tài khoản nào khớp cả username lẫn password không
         String sql = "SELECT * FROM users WHERE username = ? AND password = ?";
 
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
             preparedStatement.setString(1, username);
             preparedStatement.setString(2, password);
 
-            // Thực thi truy vấn lấy dữ liệu
             ResultSet resultSet = preparedStatement.executeQuery();
-
-            // Nếu resultSet.next() là true => Tìm thấy tài khoản hợp lệ trong DB => Đăng nhập thành công
             return resultSet.next();
 
         } catch (SQLException e) {
             e.printStackTrace();
             return false;
         }
+    }
+
+    // =========================================================================
+    // 3. LẤY THÔNG TIN USER (trả về role để client hiển thị đúng giao diện)
+    // =========================================================================
+    public String[] getUserInfo(String username) {
+        // Trả về mảng [username, role] hoặc null nếu không tìm thấy
+        String sql = "SELECT username, role FROM users WHERE username = ?";
+
+        try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+            preparedStatement.setString(1, username);
+
+            ResultSet rs = preparedStatement.executeQuery();
+            if (rs.next()) {
+                return new String[]{rs.getString("username"), rs.getString("role")};
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 }

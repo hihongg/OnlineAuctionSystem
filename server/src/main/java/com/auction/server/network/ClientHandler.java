@@ -1,100 +1,295 @@
 package com.auction.server.network;
 
+import com.auction.server.dao.BidDAO;
+import com.auction.server.dao.ItemDAO;
+import com.auction.server.dao.UserDAO;
+import com.auction.server.services.AuctionService;
+import com.auction.shared.models.Item;
 import com.auction.shared.models.Message;
-import com.auction.server.services.AuctionService; // Thêm import Service
+import com.google.gson.Gson;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.List;
 
+/**
+ * Xử lý giao tiếp với một Client cụ thể.
+ *
+ * GIAO THỨC (Protocol):
+ *   Client → Server (plain text, dấu ":"  phân cách):
+ *     "REGISTER:<username>:<password>"
+ *     "LOGIN:<username>:<password>"
+ *     "GET_ITEMS"
+ *     "PLACE_BID:<itemId>:<bidAmount>"
+ *
+ *   Server → Client (plain text):
+ *     "SUCCESS"          – thao tác thành công
+ *     "SUCCESS:<data>"   – thành công kèm dữ liệu JSON
+ *     "FAIL:<lý do>"     – thao tác thất bại
+ *     "BID_UPDATE:<json>"  – broadcast khi có bid mới
+ *     "AUCTION_ENDED:<msg>" – broadcast khi phiên kết thúc
+ */
 public class ClientHandler implements Runnable {
-    private Socket socket;
+
+    private final Socket socket;
     private BufferedReader in;
     private PrintWriter out;
 
-    // Thêm các biến lưu trữ Server và Service
-    private AuctionServer server;
-    private AuctionService auctionService;
+    private final AuctionServer server;
+    private final AuctionService auctionService;
 
-    // Cập nhật Constructor để nhận Server và Service
+    // DAOs dùng trực tiếp trong handler
+    private final UserDAO userDAO = new UserDAO();
+    private final ItemDAO itemDAO = new ItemDAO();
+    private final BidDAO bidDAO = new BidDAO();
+    private final Gson gson = new Gson();
+
+    // Lưu username sau khi đăng nhập để dùng cho PLACE_BID
+    private String loggedInUsername = null;
+
     public ClientHandler(Socket socket, AuctionServer server, AuctionService auctionService) {
         this.socket = socket;
         this.server = server;
         this.auctionService = auctionService;
         try {
-            this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            this.in  = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             this.out = new PrintWriter(socket.getOutputStream(), true);
         } catch (IOException e) {
-            System.err.println("[SERVER] Lỗi khởi tạo luồng I/O cho client: " + e.getMessage());
+            System.err.println("[HANDLER] Lỗi khởi tạo I/O: " + e.getMessage());
         }
     }
 
+    // =========================================================================
+    // VÒNG LẶP CHÍNH – đọc từng dòng từ client
+    // =========================================================================
     @Override
     public void run() {
         try {
             String inputLine;
-            // Liên tục lắng nghe tin nhắn từ Client gửi lên
             while ((inputLine = in.readLine()) != null) {
-                System.out.println("[SERVER] Nhận được từ " + socket.getInetAddress() + ": " + inputLine);
-
-                // Giải mã JSON thành đối tượng Message
-                try {
-                    Message msg = Message.fromJson(inputLine);
-                    // Gọi hàm xử lý tin nhắn
-                    handleIncomingMessage(msg);
-                } catch (Exception e) {
-                    System.err.println("[SERVER] Tin nhắn không đúng định dạng JSON: " + inputLine);
-                }
+                System.out.println("[HANDLER] Nhận từ "
+                        + socket.getInetAddress() + ": " + inputLine);
+                handleRawMessage(inputLine.trim());
             }
         } catch (IOException e) {
-            System.out.println("[SERVER] Một Client đã ngắt kết nối đột ngột.");
+            System.out.println("[HANDLER] Client ngắt kết nối: " + socket.getInetAddress());
         } finally {
             closeConnections();
         }
     }
 
-    // Hàm mới: Phân loại và xử lý tin nhắn
-    private void handleIncomingMessage(Message msg) {
-        // Giả sử class Message của bạn có thuộc tính 'type' (vd: "LOGIN", "PLACE_BID")
-        String type = msg.getAction();
+    // =========================================================================
+    // PHÂN LOẠI TIN NHẮN
+    // Hỗ trợ cả plain-text "ACTION:arg1:arg2" và JSON Message object
+    // =========================================================================
+    private void handleRawMessage(String raw) {
+        // Thử parse JSON trước (cho các message nâng cao sau này)
+        if (raw.startsWith("{")) {
+            try {
+                Message msg = Message.fromJson(raw);
+                handleJsonMessage(msg);
+                return;
+            } catch (Exception ignored) {
+                // Không phải JSON hợp lệ → thử plain text
+            }
+        }
 
-        switch (type) {
-            case "PLACE_BID":
-                // Rút trích dữ liệu từ message và gọi Service
-                // Ví dụ: int itemId = msg.getInt("itemId");
-                // String response = auctionService.processBid(itemId, userId, bidAmount);
-                // sendMessage(response);
-                System.out.println("[SERVER] Đang xử lý yêu cầu đặt giá...");
+        // Plain text protocol: "ACTION:arg1:arg2:..."
+        String[] parts = raw.split(":", 4); // tối đa 4 phần để bảo vệ password có dấu ":"
+        String action = parts[0].toUpperCase();
+
+        switch (action) {
+            case "REGISTER":
+                handleRegister(parts);
                 break;
-
             case "LOGIN":
-                // Xử lý đăng nhập qua UserDao/AuctionService
-                System.out.println("[SERVER] Đang xử lý đăng nhập...");
+                handleLogin(parts);
                 break;
-
+            case "GET_ITEMS":
+                handleGetItems();
+                break;
+            case "PLACE_BID":
+                handlePlaceBid(parts);
+                break;
             default:
-                System.out.println("[SERVER] Loại tin nhắn không được hỗ trợ: " + type);
+                sendMessage("FAIL:Lệnh không hỗ trợ: " + action);
+                System.err.println("[HANDLER] Lệnh lạ: " + action);
         }
     }
 
-    public void sendMessage(String jsonMessage) {
+    // =========================================================================
+    // XỬ LÝ JSON MESSAGE (dùng cho broadcast ngược lại hoặc mở rộng sau)
+    // =========================================================================
+    private void handleJsonMessage(Message msg) {
+        switch (msg.getAction().toUpperCase()) {
+            case "PLACE_BID":
+                // Payload JSON: {"itemId":1,"bidAmount":200.0}
+                PlaceBidPayload payload = gson.fromJson(msg.getPayload(), PlaceBidPayload.class);
+                processPlaceBid(payload.itemId, payload.bidAmount);
+                break;
+            case "GET_ITEMS":
+                handleGetItems();
+                break;
+            default:
+                sendMessage("FAIL:JSON action không hỗ trợ: " + msg.getAction());
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: REGISTER
+    // Format: "REGISTER:<username>:<password>"
+    // =========================================================================
+    private void handleRegister(String[] parts) {
+        if (parts.length < 3) {
+            sendMessage("FAIL:Thiếu thông tin đăng ký");
+            return;
+        }
+        String username = parts[1].trim();
+        String password = parts[2].trim();
+
+        if (username.isEmpty() || password.isEmpty()) {
+            sendMessage("FAIL:Username và password không được để trống");
+            return;
+        }
+
+        // Dùng username làm email (client hiện tại gửi email vào trường username)
+        boolean success = userDAO.registerUser(username, password, username, "BIDDER");
+
+        if (success) {
+            loggedInUsername = username; // Tự động đăng nhập sau đăng ký
+            System.out.println("[HANDLER] Đăng ký thành công: " + username);
+            sendMessage("SUCCESS");
+        } else {
+            sendMessage("FAIL:Username đã tồn tại hoặc lỗi server");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: LOGIN
+    // Format: "LOGIN:<username>:<password>"
+    // =========================================================================
+    private void handleLogin(String[] parts) {
+        if (parts.length < 3) {
+            sendMessage("FAIL:Thiếu thông tin đăng nhập");
+            return;
+        }
+        String username = parts[1].trim();
+        String password = parts[2].trim();
+
+        boolean valid = userDAO.authenticateUser(username, password);
+
+        if (valid) {
+            loggedInUsername = username;
+
+            // Lấy thêm role để client hiển thị đúng giao diện
+            String[] userInfo = userDAO.getUserInfo(username);
+            String role = (userInfo != null) ? userInfo[1] : "BIDDER";
+
+            System.out.println("[HANDLER] Đăng nhập thành công: " + username + " (" + role + ")");
+            sendMessage("SUCCESS:" + role); // Ví dụ: "SUCCESS:BIDDER"
+        } else {
+            sendMessage("FAIL:Sai username hoặc password");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: GET_ITEMS – trả danh sách sản phẩm đang RUNNING về client
+    // Format: "GET_ITEMS"
+    // =========================================================================
+    private void handleGetItems() {
+        List<Item> items = itemDAO.getActiveItems();
+        String json = gson.toJson(items);
+        sendMessage("SUCCESS:" + json);
+        System.out.println("[HANDLER] Gửi " + items.size() + " sản phẩm cho client.");
+    }
+
+    // =========================================================================
+    // HANDLER: PLACE_BID (plain text)
+    // Format: "PLACE_BID:<itemId>:<bidAmount>"
+    // =========================================================================
+    private void handlePlaceBid(String[] parts) {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        if (parts.length < 3) {
+            sendMessage("FAIL:Thiếu thông tin đặt giá");
+            return;
+        }
+
+        try {
+            int itemId      = Integer.parseInt(parts[1].trim());
+            double bidAmount = Double.parseDouble(parts[2].trim());
+            processPlaceBid(itemId, bidAmount);
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:itemId hoặc bidAmount không hợp lệ");
+        }
+    }
+
+    /**
+     * Logic đặt giá dùng chung cho cả plain-text và JSON handler.
+     *
+     * Luồng xử lý:
+     *   1. BidDAO.placeBidTransaction() – kiểm tra giá, khóa DB (FOR UPDATE),
+     *      lưu bid_history, cập nhật items — tất cả trong 1 Transaction.
+     *   2. Nếu thành công → AuctionService xử lý anti-sniping + broadcast
+     *      cho tất cả client đang kết nối.
+     */
+    private void processPlaceBid(int itemId, double bidAmount) {
+
+        // Bước 1: Giao dịch DB an toàn (Transaction + Pessimistic Lock)
+        String result = bidDAO.placeBidTransaction(itemId, loggedInUsername, bidAmount);
+
+        if ("SUCCESS".equals(result)) {
+            // Bước 2: Anti-sniping + broadcast realtime cho mọi client
+            try {
+                auctionService.handlePostBidSuccess(itemId, loggedInUsername, bidAmount, server);
+            } catch (Exception e) {
+                // Broadcast lỗi không làm hỏng kết quả đặt giá — chỉ log
+                System.err.println("[HANDLER] Lỗi broadcast sau bid: " + e.getMessage());
+            }
+
+            sendMessage("SUCCESS:Đặt giá thành công $" + bidAmount);
+            System.out.println("[HANDLER] " + loggedInUsername
+                    + " đặt $" + bidAmount + " cho item #" + itemId);
+        } else {
+            // result là chuỗi "ERROR: ..." từ BidDAO
+            sendMessage("FAIL:" + result.replace("ERROR: ", ""));
+            System.err.println("[HANDLER] Đặt giá thất bại: " + result);
+        }
+    }
+
+    // =========================================================================
+    // GỬI TIN NHẮN VỀ CLIENT
+    // =========================================================================
+    public void sendMessage(String message) {
         if (out != null) {
-            out.println(jsonMessage);
+            out.println(message);
         }
     }
 
+    // =========================================================================
+    // DỌN DẸP KẾT NỐI
+    // =========================================================================
     private void closeConnections() {
         try {
-            // Thay vì gọi static, ta gọi phương thức của đối tượng server
-            if (server != null) {
-                server.removeClient(this);
-            }
-            if (in != null) in.close();
-            if (out != null) out.close();
+            if (server != null) server.removeClient(this);
+            if (in    != null) in.close();
+            if (out   != null) out.close();
             if (socket != null) socket.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    // =========================================================================
+    // Inner class – dùng để deserialize payload JSON của PLACE_BID
+    // =========================================================================
+    private static class PlaceBidPayload {
+        int    itemId;
+        double bidAmount;
     }
 }
