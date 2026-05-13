@@ -7,73 +7,84 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+/**
+ * DAO thao tác với bảng users.
+ *
+ * Mỗi phương thức tự lấy Connection từ pool và trả lại ngay khi xong
+ * (try-with-resources). Không lưu Connection vào field — đây là lý do
+ * phiên bản cũ không thread-safe: mọi thread dùng chung 1 connection.
+ */
 public class UserDAO {
-    private Connection connection;
-
-    public UserDAO() {
-        // Lấy kết nối từ Singleton
-        this.connection = DatabaseConnection.getInstance().getConnection();
-    }
 
     // =========================================================================
-    // 1. HÀM ĐĂNG KÝ (Khớp với lệnh registerUser trong file Test)
+    // 1. ĐĂNG KÝ
     // =========================================================================
-    public boolean registerUser(String username, String password, String email, String role) {
-        // SQL Thêm người dùng (Lưu ý: Đảm bảo bảng 'users' trong Database của bạn có cột 'email')
-        String sql = "INSERT INTO users (username, password, email, role) VALUES (?, ?, ?, ?)";
+    public boolean registerUser(String username, String password,
+                                String email, String role) {
+        String sql = "INSERT INTO users (username, password, email, role) "
+                + "VALUES (?, ?, ?, ?)";
 
-        try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
-            // Gán 4 tham số từ file test vào SQL
-            preparedStatement.setString(1, username);
-            preparedStatement.setString(2, password);
-            preparedStatement.setString(3, email);
-            preparedStatement.setString(4, role);
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            // Thực thi câu lệnh
-            int rowsAffected = preparedStatement.executeUpdate();
-            return rowsAffected > 0; // Trả về true nếu thêm thành công
+            pstmt.setString(1, username);
+            pstmt.setString(2, password);
+            pstmt.setString(3, email);
+            pstmt.setString(4, role);
+
+            return pstmt.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            e.printStackTrace();
+            // username đã tồn tại (UNIQUE constraint) → không cần stacktrace
+            System.err.println("[UserDAO] registerUser thất bại: " + e.getMessage());
             return false;
         }
     }
 
     // =========================================================================
-    // 2. HÀM ĐĂNG NHẬP (Khớp với lệnh authenticateUser trong file Test)
+    // 2. ĐĂNG NHẬP
     // =========================================================================
     public boolean authenticateUser(String username, String password) {
-        String sql = "SELECT * FROM users WHERE username = ? AND password = ?";
+        String sql = "SELECT 1 FROM users WHERE username = ? AND password = ?";
 
-        try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
-            preparedStatement.setString(1, username);
-            preparedStatement.setString(2, password);
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            ResultSet resultSet = preparedStatement.executeQuery();
-            return resultSet.next();
+            pstmt.setString(1, username);
+            pstmt.setString(2, password);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next();
+            }
 
         } catch (SQLException e) {
-            e.printStackTrace();
+            System.err.println("[UserDAO] authenticateUser lỗi: " + e.getMessage());
             return false;
         }
     }
 
     // =========================================================================
-    // 3. LẤY THÔNG TIN USER (trả về role để client hiển thị đúng giao diện)
+    // 3. LẤY THÔNG TIN USER (username + role)
     // =========================================================================
     public String[] getUserInfo(String username) {
-        // Trả về mảng [username, role] hoặc null nếu không tìm thấy
         String sql = "SELECT username, role FROM users WHERE username = ?";
 
-        try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
-            preparedStatement.setString(1, username);
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            ResultSet rs = preparedStatement.executeQuery();
-            if (rs.next()) {
-                return new String[]{rs.getString("username"), rs.getString("role")};
+            pstmt.setString(1, username);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return new String[]{
+                            rs.getString("username"),
+                            rs.getString("role")
+                    };
+                }
             }
+
         } catch (SQLException e) {
-            e.printStackTrace();
+            System.err.println("[UserDAO] getUserInfo lỗi: " + e.getMessage());
         }
         return null;
     }
