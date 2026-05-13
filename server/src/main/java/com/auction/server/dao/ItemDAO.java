@@ -8,16 +8,25 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 public class ItemDAO {
 
-    // 1. Lấy tất cả sản phẩm đang trong trạng thái MỞ đấu giá (Hàm gốc của bạn)
+    // =========================================================================
+    // 1. Lấy sản phẩm hiển thị cho Bidder (OPEN hoặc RUNNING)
+    //
+    // BUG CŨ: WHERE status = 'OPEN'
+    //   → Dữ liệu mẫu trong SQL là RUNNING, nên client luôn nhận danh sách rỗng.
+    //
+    // FIX: WHERE status IN ('OPEN', 'RUNNING')
+    //   - OPEN   = phiên vừa tạo, chưa đến giờ bắt đầu (Seller vừa đăng).
+    //   - RUNNING = đang diễn ra, Bidder có thể đặt giá.
+    //   Cả hai trạng thái đều nên hiển thị trong danh sách cho Bidder.
+    // =========================================================================
     public List<Item> getActiveItems() {
         List<Item> items = new ArrayList<>();
-        String sql = "SELECT * FROM items WHERE status = 'OPEN'";
+        String sql = "SELECT * FROM items WHERE status IN ('OPEN', 'RUNNING') ORDER BY end_time ASC";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql);
@@ -27,12 +36,14 @@ public class ItemDAO {
                 items.add(mapResultSetToItem(rs));
             }
         } catch (SQLException e) {
-            System.err.println("Lỗi khi tải danh sách sản phẩm đang mở: " + e.getMessage());
+            System.err.println("[ItemDAO] getActiveItems lỗi: " + e.getMessage());
         }
         return items;
     }
 
-    // 2. Lấy TOÀN BỘ sản phẩm (Kể cả đã đóng, để phục vụ việc kiểm tra gõ búa)
+    // =========================================================================
+    // 2. Lấy TOÀN BỘ sản phẩm (Scheduler dùng để kiểm tra OPEN→RUNNING và gõ búa)
+    // =========================================================================
     public List<Item> getAllItems() {
         List<Item> items = new ArrayList<>();
         String sql = "SELECT * FROM items";
@@ -45,30 +56,14 @@ public class ItemDAO {
                 items.add(mapResultSetToItem(rs));
             }
         } catch (SQLException e) {
-            System.err.println("Lỗi khi tải toàn bộ danh sách sản phẩm: " + e.getMessage());
+            System.err.println("[ItemDAO] getAllItems lỗi: " + e.getMessage());
         }
         return items;
     }
 
-    // 3. Lấy chính xác 1 món đồ theo Tên (Cần thiết để Service kiểm tra giá trước khi Bid)
-    public Item getItemByName(String name) {
-        String sql = "SELECT * FROM items WHERE name = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-
-            pstmt.setString(1, name);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) {
-                    return mapResultSetToItem(rs);
-                }
-            }
-        } catch (SQLException e) {
-            System.err.println("Lỗi khi tìm sản phẩm theo tên: " + e.getMessage());
-        }
-        return null;
-    }
-
-    // 3b. Lấy item theo id (được AuctionService sử dụng)
+    // =========================================================================
+    // 3a. Lấy item theo ID
+    // =========================================================================
     public Item getItemById(int itemId) {
         String sql = "SELECT * FROM items WHERE id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
@@ -76,19 +71,63 @@ public class ItemDAO {
 
             pstmt.setInt(1, itemId);
             try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) {
-                    return mapResultSetToItem(rs);
-                }
+                if (rs.next()) return mapResultSetToItem(rs);
             }
         } catch (SQLException e) {
-            System.err.println("Lỗi khi tìm sản phẩm theo id: " + e.getMessage());
+            System.err.println("[ItemDAO] getItemById lỗi: " + e.getMessage());
         }
         return null;
     }
 
-    // 4. Cập nhật lượt Đặt giá mới (Trái tim của hệ thống)
+    // =========================================================================
+    // 3b. Lấy item theo tên (giữ lại cho tương thích với code cũ nếu cần)
+    // =========================================================================
+    public Item getItemByName(String name) {
+        String sql = "SELECT * FROM items WHERE name = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setString(1, name);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) return mapResultSetToItem(rs);
+            }
+        } catch (SQLException e) {
+            System.err.println("[ItemDAO] getItemByName lỗi: " + e.getMessage());
+        }
+        return null;
+    }
+
+    // =========================================================================
+    // 4a. Cập nhật bid theo itemId (ĐÚNG — dùng WHERE id = ?)
+    //
+    // BUG CŨ: placeBid(String itemName, ...) dùng WHERE name = ?
+    //   → AuctionService gọi placeBid(String.valueOf(itemId), ...) truyền "123"
+    //     vào WHERE name = ? → không tìm được row nào → update 0 dòng → luôn false.
+    //
+    // FIX: Thêm placeBidById(int itemId, ...) dùng WHERE id = ?
+    //   AuctionService và BidDAO đều dùng hàm này.
+    // =========================================================================
+    public boolean placeBidById(int itemId, double bidAmount, String username) {
+        String sql = "UPDATE items SET current_highest_bid = ?, highest_bidder = ? WHERE id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setDouble(1, bidAmount);
+            pstmt.setString(2, username);
+            pstmt.setInt(3, itemId);
+
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            System.err.println("[ItemDAO] placeBidById lỗi: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // =========================================================================
+    // 4b. Giữ lại hàm cũ theo tên (tương thích với các test hoặc code khác)
+    //     Chú ý: hàm này chỉ dùng khi thực sự biết tên item.
+    // =========================================================================
     public boolean placeBid(String itemName, double bidAmount, String username) {
-        // Cập nhật giá cao nhất và người đặt giá (Theo đúng tên cột trong DB của bạn)
         String sql = "UPDATE items SET current_highest_bid = ?, highest_bidder = ? WHERE name = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -97,29 +136,16 @@ public class ItemDAO {
             pstmt.setString(2, username);
             pstmt.setString(3, itemName);
 
-            int rowsAffected = pstmt.executeUpdate();
-            return rowsAffected > 0;
+            return pstmt.executeUpdate() > 0;
         } catch (SQLException e) {
-            System.err.println("Lỗi khi lưu lượt đấu giá: " + e.getMessage());
+            System.err.println("[ItemDAO] placeBid lỗi: " + e.getMessage());
             return false;
         }
     }
 
-    // 5. Cập nhật Trạng thái (Dùng để đóng phiên/gõ búa)
-    public void updateStatus(String itemName, String status) {
-        String sql = "UPDATE items SET status = ? WHERE name = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-
-            pstmt.setString(1, status);
-            pstmt.setString(2, itemName);
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            System.err.println("Lỗi khi cập nhật trạng thái: " + e.getMessage());
-        }
-    }
-
-    // 5b. Cập nhật trạng thái theo itemId
+    // =========================================================================
+    // 5a. Cập nhật trạng thái theo itemId (dùng trong Scheduler và BidDAO)
+    // =========================================================================
     public void updateStatus(int itemId, Item.Status status) {
         String sql = "UPDATE items SET status = ? WHERE id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
@@ -129,68 +155,119 @@ public class ItemDAO {
             pstmt.setInt(2, itemId);
             pstmt.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("Lỗi khi cập nhật trạng thái theo id: " + e.getMessage());
+            System.err.println("[ItemDAO] updateStatus(id) lỗi: " + e.getMessage());
         }
     }
 
-    // 6. Cập nhật Thời gian kết thúc (Phục vụ chức năng Anti-sniping +5 phút)
-    public void updateEndTime(String itemName, LocalDateTime newEndTime) {
-        String sql = "UPDATE items SET end_time = ? WHERE name = ?";
+    // =========================================================================
+    // 5b. Cập nhật trạng thái theo tên (tương thích ngược)
+    // =========================================================================
+    public void updateStatus(String itemName, String status) {
+        String sql = "UPDATE items SET status = ? WHERE name = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            pstmt.setTimestamp(1, Timestamp.valueOf(newEndTime));
+            pstmt.setString(1, status);
             pstmt.setString(2, itemName);
             pstmt.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("Lỗi khi gia hạn thời gian: " + e.getMessage());
+            System.err.println("[ItemDAO] updateStatus(name) lỗi: " + e.getMessage());
         }
     }
 
-    // 6b. Cập nhật thời gian kết thúc theo itemId
-    public void updateEndTime(int itemId, long newEndTime) {
+    // =========================================================================
+    // 6. Cập nhật thời gian kết thúc theo itemId (Anti-sniping +5 phút)
+    // =========================================================================
+    public void updateEndTime(int itemId, long newEndTimeMs) {
         String sql = "UPDATE items SET end_time = ? WHERE id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            pstmt.setTimestamp(1, new Timestamp(newEndTime));
+            pstmt.setLong(1, newEndTimeMs);
             pstmt.setInt(2, itemId);
             pstmt.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("Lỗi khi gia hạn thời gian theo id: " + e.getMessage());
+            System.err.println("[ItemDAO] updateEndTime lỗi: " + e.getMessage());
         }
     }
 
-    // --- HÀM PHỤ TRỢ (Helper Method) ---
-    // Gom logic đọc dữ liệu từ DB thành 1 hàm để code gọn gàng, tái sử dụng cho 3 hàm Select ở trên
+    // =========================================================================
+    // 7. Kích hoạt các phiên OPEN đã đến giờ start_time → chuyển thành RUNNING
+    //
+    // FIX MỚI (Bug 5): AuctionService.refreshAuctionsStatus() trước đây chỉ xử lý
+    //   RUNNING → FINISHED, không bao giờ chuyển OPEN → RUNNING.
+    //   Kết quả: Seller đăng sản phẩm mới (status=OPEN) nhưng mãi không được đấu giá.
+    //
+    // Hàm này được Scheduler gọi mỗi giây, trả về số phiên vừa được kích hoạt.
+    // =========================================================================
+    public int activatePendingItems() {
+        // start_time là TIMESTAMP — phiên nào đã qua giờ bắt đầu thì kích hoạt
+        String sql = "UPDATE items SET status = 'RUNNING' "
+                + "WHERE status = 'OPEN' AND start_time <= NOW()";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            int count = pstmt.executeUpdate();
+            if (count > 0) {
+                System.out.println("[ItemDAO] Kích hoạt " + count + " phiên OPEN → RUNNING.");
+            }
+            return count;
+        } catch (SQLException e) {
+            System.err.println("[ItemDAO] activatePendingItems lỗi: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    // =========================================================================
+    // HELPER — đọc một dòng ResultSet thành object Item
+    //
+    // BUG CŨ 1 (đã sửa): rs.getTimestamp("end_time") trên cột BIGINT
+    //   → JDBC đọc BIGINT dưới dạng giây (Unix epoch), không phải milliseconds.
+    //   → Ví dụ: end_time lưu 1_716_000_000_000 ms, getTimestamp() trả Timestamp
+    //     tương ứng với năm ~56000 → hoàn toàn sai.
+    //   FIX: rs.getLong("end_time") — lấy thẳng số milliseconds đúng như DB lưu.
+    //
+    // BUG CŨ 2 (đã sửa): if (currentHighestBid > startingPrice)
+    //   → Khi bid đầu tiên đúng bằng startingPrice, điều kiện false
+    //     → item.setCurrentHighestBidder("Chưa có") dù thực tế đã có người đặt giá.
+    //   FIX: Luôn lấy giá từ DB; chỉ fallback về startingPrice khi DB trả về 0.
+    // =========================================================================
     private Item mapResultSetToItem(ResultSet rs) throws SQLException {
-        int id = rs.getInt("id");
-        String name = rs.getString("name");
-        double startingPrice = rs.getDouble("starting_price");
+        int id            = rs.getInt("id");
+        String name       = rs.getString("name");
+        double startPrice = rs.getDouble("starting_price");
 
-        Item item = new Item(id, name, startingPrice);
+        Item item = new Item(id, name, startPrice);
 
-        // Map giá hiện tại theo logic của bạn
-        double currentHighestBid = rs.getDouble("current_highest_bid");
-        if (currentHighestBid > startingPrice) {
-            item.setCurrentHighestBid(currentHighestBid);
-            item.setCurrentHighestBidder(rs.getString("highest_bidder"));
-        } else {
-            // Nếu chưa ai đặt thì giá cao nhất tạm tính bằng giá khởi điểm
-            item.setCurrentHighestBid(startingPrice);
-            item.setCurrentHighestBidder("Chưa có");
+        // --- Giá hiện tại ---
+        // FIX Bug cũ 2: dùng > 0 thay vì > startingPrice
+        double currentBid = rs.getDouble("current_highest_bid");
+        if (currentBid > 0) {
+            item.setCurrentHighestBid(currentBid);
+            String bidder = rs.getString("highest_bidder");
+            item.setCurrentHighestBidder(bidder != null && !bidder.isBlank() ? bidder : "Chưa có");
+        }
+        // else: constructor đã gán currentHighestBid = startingPrice, "Chưa có"
+
+        // --- Description ---
+        item.setDescription(rs.getString("description"));
+
+        // --- Status ---
+        String statusStr = rs.getString("status");
+        if (statusStr != null) {
+            try {
+                item.setStatus(Item.Status.valueOf(statusStr));
+            } catch (IllegalArgumentException e) {
+                System.err.println("[ItemDAO] Status không hợp lệ: " + statusStr);
+            }
         }
 
-        // Cố gắng Map thêm Trạng thái và Thời gian kết thúc (Bắt lỗi nếu bảng DB chưa có cột này)
-        try {
-            String status = rs.getString("status");
-            if (status != null) item.setStatus(Item.Status.valueOf(status));
+        // --- End time: FIX Bug cũ 1 — cột BIGINT lưu milliseconds, dùng getLong ---
+        long endTime = rs.getLong("end_time");
+        item.setEndTime(endTime);   // 0 = không có hạn chót
 
-            Timestamp endTime = rs.getTimestamp("end_time");
-            if (endTime != null) item.setEndTime(endTime.getTime());
-        } catch (SQLException ignored) {
-            // Bỏ qua nếu cột status hoặc end_time không tồn tại trong MySQL
-        }
+        // --- Seller ---
+        item.setSellerId(rs.getInt("seller_id"));
 
         return item;
     }

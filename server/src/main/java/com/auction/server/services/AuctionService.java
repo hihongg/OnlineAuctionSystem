@@ -13,97 +13,36 @@ import java.util.concurrent.TimeUnit;
 
 public class AuctionService {
 
-    private ItemDAO itemDAO;
-    private AuctionServer server;
+    private final ItemDAO itemDAO;
+    private final AuctionServer server;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private final Gson gson = new Gson();
 
     public AuctionService(AuctionServer server) {
         this.itemDAO = new ItemDAO();
-        this.server = server;
+        this.server  = server;
         startScheduler();
         System.out.println("[SERVICE] AuctionService đã sẵn sàng.");
     }
 
-    // ========== SCHEDULER TỰ ĐỘNG ==========
-
+    // =========================================================================
+    // SCHEDULER — chạy mỗi 1 giây, xử lý 2 việc:
+    //   1. Kích hoạt phiên OPEN đã đến giờ bắt đầu → RUNNING  (BUG 5 đã sửa)
+    //   2. Đóng phiên RUNNING đã hết giờ → FINISHED + broadcast kết quả
+    // =========================================================================
     public void startScheduler() {
         scheduler.scheduleAtFixedRate(this::refreshAuctionsStatus, 0, 1, TimeUnit.SECONDS);
-        System.out.println("[SERVICE] Scheduler kiểm tra hết hạn đã chạy (mỗi 1 giây).");
+        System.out.println("[SERVICE] Scheduler đã chạy (kiểm tra mỗi 1 giây).");
     }
-
-    // ========== LẤY DANH SÁCH ==========
-
-    public List<Item> getActiveAuctions() {
-        return itemDAO.getActiveItems();
-    }
-
-    // ========== XỬ LÝ ĐẶT GIÁ (CORE) ==========
-
-    /**
-     * Hàm xử lý khi người dùng đặt giá.
-     * synchronized: đảm bảo chỉ 1 thread đặt giá cho 1 item tại 1 thời điểm.
-     */
-    public synchronized boolean placeBid(int itemId, String username, double bidAmount) throws Exception {
-
-        // 1. Lấy item từ database
-        Item currentItem = itemDAO.getItemById(itemId);
-
-        if (currentItem == null) {
-            throw new Exception("Không tìm thấy phiên đấu giá #" + itemId);
-        }
-
-        // 2. Kiểm tra trạng thái: chỉ đấu giá khi RUNNING
-        if (currentItem.getStatus() != Item.Status.RUNNING) {
-            throw new Exception("Phiên đấu giá không hoạt động (trạng thái: " + currentItem.getStatus() + ")");
-        }
-
-        // 3. Kiểm tra hết hạn
-        long now = System.currentTimeMillis();
-        if (currentItem.getEndTime() > 0 && now > currentItem.getEndTime()) {
-            currentItem.setStatus(Item.Status.FINISHED);
-            itemDAO.updateStatus(itemId, Item.Status.FINISHED);
-            throw new Exception("Phiên đấu giá đã kết thúc!");
-        }
-
-        // 4. Kiểm tra giá đặt > giá hiện tại
-        double currentMaxPrice = currentItem.getCurrentHighestBid();
-        if (bidAmount <= currentMaxPrice) {
-            throw new Exception("Giá đặt ($" + bidAmount + ") phải cao hơn giá hiện tại ($" + currentMaxPrice + ")!");
-        }
-
-        // 5. ANTI-SNIPING: nếu còn dưới 60 giây, gia hạn thêm 5 phút
-        if (currentItem.getEndTime() > 0) {
-            long remainingMs = currentItem.getEndTime() - now;
-            if (remainingMs < 60_000 && remainingMs > 0) {
-                long newEndTime = currentItem.getEndTime() + (5 * 60_000); // +5 phút
-                itemDAO.updateEndTime(itemId, newEndTime);
-                currentItem.setEndTime(newEndTime);
-                System.out.println("[ANTI-SNIPING] Gia hạn thêm 5 phút cho item #" + itemId);
-            }
-        }
-
-        // 6. Cập nhật giá mới vào database
-        boolean success = itemDAO.placeBid(String.valueOf(itemId), bidAmount, username);
-
-        if (success) {
-            // Cập nhật lại object trong RAM
-            currentItem.setCurrentHighestBid(bidAmount);
-            currentItem.setCurrentHighestBidder(username);
-
-            // 7. BROADCAST: gửi cập nhật cho TẤT CẢ client
-            Message updateMsg = new Message("BID_UPDATE", new Gson().toJson(currentItem));
-            server.broadcast(updateMsg);
-
-            System.out.println("[BID] " + username + " đặt $" + bidAmount + " cho item #" + itemId);
-            return true;
-        } else {
-            throw new Exception("Lỗi hệ thống khi cập nhật database!");
-        }
-    }
-
-    // ========== TỰ ĐỘNG ĐÓNG PHIÊN HẾT HẠN ==========
 
     public void refreshAuctionsStatus() {
+        // --- Bước 1: OPEN → RUNNING ---
+        // FIX Bug 5: Trước đây scheduler không bao giờ kích hoạt phiên OPEN.
+        // Seller đăng sản phẩm → status = OPEN → không bao giờ chuyển sang RUNNING
+        // → Bidder không bao giờ thấy phiên đó dù start_time đã qua.
+        itemDAO.activatePendingItems();
+
+        // --- Bước 2: RUNNING → FINISHED ---
         long now = System.currentTimeMillis();
         List<Item> allItems = itemDAO.getAllItems();
 
@@ -113,59 +52,124 @@ public class AuctionService {
                     && now > item.getEndTime()) {
 
                 synchronized (this) {
-                    // Cập nhật trạng thái FINISHED
-                    item.setStatus(Item.Status.FINISHED);
+                    // Chỉ xử lý nếu DB vẫn còn RUNNING (tránh double-process)
+                    Item fresh = itemDAO.getItemById(item.getId());
+                    if (fresh == null || fresh.getStatus() != Item.Status.RUNNING) continue;
+
                     itemDAO.updateStatus(item.getId(), Item.Status.FINISHED);
 
-                    // Tạo thông báo kết quả
-                    String endMsg = "Phiên #" + item.getId() + " (" + item.getName() + ") đã kết thúc!\n"
-                            + "Người thắng: " + item.getCurrentHighestBidder()
-                            + " | Giá: $" + item.getCurrentHighestBid();
+                    String winner = item.getCurrentHighestBidder();
+                    boolean hasWinner = winner != null && !winner.equals("Chưa có");
 
-                    Message endMessage = new Message("AUCTION_ENDED", endMsg);
-                    server.broadcast(endMessage);
+                    String endMsg = "Phiên #" + item.getId()
+                            + " (" + item.getName() + ") đã kết thúc!\n"
+                            + (hasWinner
+                            ? "Người thắng: " + winner + " | Giá: $" + item.getCurrentHighestBid()
+                            : "Không có người tham gia.");
+
+                    server.broadcast(new Message("AUCTION_ENDED", endMsg));
 
                     System.out.println("--- GÕ BÚA! " + item.getName()
-                            + " | Winner: " + item.getCurrentHighestBidder()
-                            + " | $" + item.getCurrentHighestBid() + " ---");
+                            + (hasWinner ? " | Winner: " + winner + " | $" + item.getCurrentHighestBid() : " | Không có ai đặt giá") + " ---");
                 }
             }
         }
     }
 
-    // ========== SAU KHI BidDAO TRANSACTION THÀNH CÔNG ==========
-
-    /**
-     * Được gọi từ ClientHandler sau khi BidDAO.placeBidTransaction() thành công.
-     * Chỉ lo 2 việc: anti-sniping và broadcast cho tất cả client.
-     */
-    public void handlePostBidSuccess(int itemId, String username, double bidAmount, AuctionServer server) {
-        // Anti-sniping: nếu còn dưới 60 giây, gia hạn thêm 5 phút
-        Item currentItem = itemDAO.getItemById(itemId);
-        if (currentItem != null && currentItem.getEndTime() > 0) {
-            long now = System.currentTimeMillis();
-            long remainingMs = currentItem.getEndTime() - now;
-            if (remainingMs > 0 && remainingMs < 60_000) {
-                long newEndTime = currentItem.getEndTime() + (5 * 60_000);
-                itemDAO.updateEndTime(itemId, newEndTime);
-                currentItem.setEndTime(newEndTime);
-                System.out.println("[ANTI-SNIPING] Gia hạn thêm 5 phút cho item #" + itemId);
-            }
-        }
-
-        // Cập nhật RAM để broadcast đúng giá mới
-        if (currentItem != null) {
-            currentItem.setCurrentHighestBid(bidAmount);
-            currentItem.setCurrentHighestBidder(username);
-        }
-
-        // Broadcast BID_UPDATE cho tất cả client đang xem
-        Message updateMsg = new Message("BID_UPDATE", new Gson().toJson(currentItem));
-        server.broadcast(updateMsg);
+    // =========================================================================
+    // LẤY DANH SÁCH PHIÊN ĐANG HOẠT ĐỘNG (dùng cho các handler cần lấy list)
+    // =========================================================================
+    public List<Item> getActiveAuctions() {
+        return itemDAO.getActiveItems();
     }
 
-    // ========== DỌN DẸP ==========
+    // =========================================================================
+    // ĐẶT GIÁ — luồng đầy đủ qua Service (dùng khi không đi qua BidDAO trực tiếp)
+    //
+    // BUG CŨ (đã sửa): itemDAO.placeBid(String.valueOf(itemId), ...)
+    //   → Truyền "123" (chuỗi số) vào WHERE name = ? → không tìm được item.
+    //   FIX: Dùng itemDAO.placeBidById(itemId, ...) — WHERE id = ?
+    //
+    // Lưu ý: Trong luồng hiện tại, ClientHandler gọi BidDAO.placeBidTransaction()
+    //   trực tiếp (an toàn hơn nhờ Transaction + Pessimistic Lock).
+    //   Hàm này vẫn giữ lại để AuctionService có thể tái sử dụng nếu cần.
+    // =========================================================================
+    public synchronized boolean placeBid(int itemId, String username, double bidAmount) throws Exception {
 
+        Item currentItem = itemDAO.getItemById(itemId);
+        if (currentItem == null) {
+            throw new Exception("Không tìm thấy phiên đấu giá #" + itemId);
+        }
+
+        if (currentItem.getStatus() != Item.Status.RUNNING) {
+            throw new Exception("Phiên đấu giá không hoạt động (trạng thái: "
+                    + currentItem.getStatus() + ")");
+        }
+
+        long now = System.currentTimeMillis();
+        if (currentItem.getEndTime() > 0 && now > currentItem.getEndTime()) {
+            itemDAO.updateStatus(itemId, Item.Status.FINISHED);
+            throw new Exception("Phiên đấu giá đã kết thúc!");
+        }
+
+        if (bidAmount <= currentItem.getCurrentHighestBid()) {
+            throw new Exception("Giá đặt ($" + bidAmount
+                    + ") phải cao hơn giá hiện tại ($" + currentItem.getCurrentHighestBid() + ")!");
+        }
+
+        // Anti-sniping: nếu còn dưới 60 giây, gia hạn thêm 5 phút
+        applyAntiSniping(currentItem);
+
+        // FIX Bug 4: dùng placeBidById (WHERE id = ?) thay vì placeBid (WHERE name = ?)
+        boolean success = itemDAO.placeBidById(itemId, bidAmount, username);
+
+        if (success) {
+            currentItem.setCurrentHighestBid(bidAmount);
+            currentItem.setCurrentHighestBidder(username);
+            server.broadcast(new Message("BID_UPDATE", gson.toJson(currentItem)));
+            System.out.println("[BID] " + username + " đặt $" + bidAmount + " cho item #" + itemId);
+            return true;
+        } else {
+            throw new Exception("Lỗi hệ thống khi cập nhật database!");
+        }
+    }
+
+    // =========================================================================
+    // SAU KHI BidDAO.placeBidTransaction() THÀNH CÔNG
+    // Được gọi từ ClientHandler — chỉ lo Anti-sniping + Broadcast.
+    // =========================================================================
+    public void handlePostBidSuccess(int itemId, String username, double bidAmount, AuctionServer auctionServer) {
+        Item currentItem = itemDAO.getItemById(itemId);
+        if (currentItem == null) return;
+
+        // Anti-sniping
+        applyAntiSniping(currentItem);
+
+        // Cập nhật RAM để broadcast đúng giá mới
+        currentItem.setCurrentHighestBid(bidAmount);
+        currentItem.setCurrentHighestBidder(username);
+
+        // Broadcast cho tất cả client
+        auctionServer.broadcast(new Message("BID_UPDATE", gson.toJson(currentItem)));
+    }
+
+    // =========================================================================
+    // HELPER — Anti-sniping: nếu còn < 60 giây thì gia hạn thêm 5 phút
+    // =========================================================================
+    private void applyAntiSniping(Item item) {
+        if (item.getEndTime() <= 0) return;
+        long remaining = item.getEndTime() - System.currentTimeMillis();
+        if (remaining > 0 && remaining < 60_000) {
+            long newEndTime = item.getEndTime() + 5 * 60_000L;
+            itemDAO.updateEndTime(item.getId(), newEndTime);
+            item.setEndTime(newEndTime);
+            System.out.println("[ANTI-SNIPING] Gia hạn +5 phút cho item #" + item.getId());
+        }
+    }
+
+    // =========================================================================
+    // DỌN DẸP khi Server tắt
+    // =========================================================================
     public void shutdown() {
         scheduler.shutdown();
         System.out.println("[SERVICE] AuctionService đã dừng.");
