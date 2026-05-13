@@ -42,7 +42,7 @@ public class BidDAOTest {
 
         // Tạo item RUNNING với giá khởi điểm 500.0
         String sql = "INSERT INTO items (name, description, starting_price, current_highest_bid, "
-                + "highest_bidder_username, status, end_time, seller_id) "
+                + "highest_bidder, status, end_time, seller_id) "
                 + "VALUES (?, 'Test bid item', 500.0, 500.0, 'Chưa có', 'RUNNING', ?, 1)";
 
         try (Connection conn = DatabaseConnection.getConnection();
