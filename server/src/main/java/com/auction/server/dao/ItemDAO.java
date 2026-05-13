@@ -219,6 +219,102 @@ public class ItemDAO {
     }
 
     // =========================================================================
+    // 8. Thêm sản phẩm mới (Seller dùng)
+    //    Trả về id tự sinh của dòng vừa INSERT, hoặc -1 nếu thất bại.
+    // =========================================================================
+    public int addItem(Item item) {
+        String sql = "INSERT INTO items (name, description, starting_price, current_highest_bid, "
+                + "highest_bidder, status, end_time, seller_id) "
+                + "VALUES (?, ?, ?, ?, 'Chưa có', 'OPEN', ?, ?)";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql,
+                     java.sql.Statement.RETURN_GENERATED_KEYS)) {
+
+            pstmt.setString(1, item.getName());
+            pstmt.setString(2, item.getDescription());
+            pstmt.setDouble(3, item.getStartingPrice());
+            pstmt.setDouble(4, item.getStartingPrice()); // current = starting
+            pstmt.setLong(5, item.getEndTime());
+            pstmt.setInt(6, item.getSellerId());
+
+            int rows = pstmt.executeUpdate();
+            if (rows > 0) {
+                try (ResultSet keys = pstmt.getGeneratedKeys()) {
+                    if (keys.next()) return keys.getInt(1);
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("[ItemDAO] addItem lỗi: " + e.getMessage());
+        }
+        return -1;
+    }
+
+    // =========================================================================
+    // 9. Cập nhật thông tin sản phẩm (Seller chỉ sửa được phiên chưa RUNNING)
+    //    Trả về true nếu update thành công.
+    // =========================================================================
+    public boolean updateItem(int itemId, String name, String description,
+                              double startingPrice, long endTime) {
+        // Chỉ cho phép sửa khi phiên còn OPEN (chưa bắt đầu đấu giá)
+        String sql = "UPDATE items SET name=?, description=?, starting_price=?, end_time=? "
+                + "WHERE id=? AND status='OPEN'";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setString(1, name);
+            pstmt.setString(2, description);
+            pstmt.setDouble(3, startingPrice);
+            pstmt.setLong(4, endTime);
+            pstmt.setInt(5, itemId);
+
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            System.err.println("[ItemDAO] updateItem lỗi: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // =========================================================================
+    // 10. Xóa sản phẩm (Admin hoặc Seller xóa phiên chưa RUNNING)
+    //     Cascade sẽ tự xóa bid_history liên quan (nhờ ON DELETE CASCADE).
+    // =========================================================================
+    public boolean deleteItem(int itemId) {
+        String sql = "DELETE FROM items WHERE id=? AND status IN ('OPEN', 'FINISHED', 'CANCELED')";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, itemId);
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            System.err.println("[ItemDAO] deleteItem lỗi: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // =========================================================================
+    // 11. Lấy danh sách sản phẩm theo Seller (Seller quản lý sản phẩm của mình)
+    // =========================================================================
+    public List<Item> getItemsBySeller(int sellerId) {
+        List<Item> items = new ArrayList<>();
+        String sql = "SELECT * FROM items WHERE seller_id = ? ORDER BY id DESC";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, sellerId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) items.add(mapResultSetToItem(rs));
+            }
+        } catch (SQLException e) {
+            System.err.println("[ItemDAO] getItemsBySeller lỗi: " + e.getMessage());
+        }
+        return items;
+    }
+
+    // =========================================================================
     // HELPER — đọc một dòng ResultSet thành object Item
     //
     // BUG CŨ 1 (đã sửa): rs.getTimestamp("end_time") trên cột BIGINT
