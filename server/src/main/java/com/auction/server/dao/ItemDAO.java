@@ -89,7 +89,7 @@ public class ItemDAO {
     // 4. Cập nhật lượt Đặt giá mới (Trái tim của hệ thống)
     public boolean placeBid(String itemName, double bidAmount, String username) {
         // Cập nhật giá cao nhất và người đặt giá (Theo đúng tên cột trong DB của bạn)
-        String sql = "UPDATE items SET current_highest_bid = ?, highest_bidder_username = ? WHERE name = ?";
+        String sql = "UPDATE items SET current_highest_bid = ?, highest_bidder = ? WHERE name = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
@@ -174,7 +174,7 @@ public class ItemDAO {
         double currentHighestBid = rs.getDouble("current_highest_bid");
         if (currentHighestBid > startingPrice) {
             item.setCurrentHighestBid(currentHighestBid);
-            item.setCurrentHighestBidder(rs.getString("highest_bidder_username"));
+            item.setCurrentHighestBidder(rs.getString("highest_bidder"));
         } else {
             // Nếu chưa ai đặt thì giá cao nhất tạm tính bằng giá khởi điểm
             item.setCurrentHighestBid(startingPrice);
