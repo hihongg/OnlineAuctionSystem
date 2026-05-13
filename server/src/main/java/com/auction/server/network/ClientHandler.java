@@ -114,6 +114,21 @@ public class ClientHandler implements Runnable {
             case "PLACE_BID":
                 handlePlaceBid(parts);
                 break;
+            case "GET_BID_HISTORY":
+                handleGetBidHistory(parts);
+                break;
+            case "ADD_ITEM":
+                handleAddItem(parts);
+                break;
+            case "UPDATE_ITEM":
+                handleUpdateItem(parts);
+                break;
+            case "DELETE_ITEM":
+                handleDeleteItem(parts);
+                break;
+            case "GET_MY_ITEMS":
+                handleGetMyItems();
+                break;
             default:
                 sendMessage("FAIL:Lệnh không hỗ trợ: " + action);
                 System.err.println("[HANDLER] Lệnh lạ: " + action);
@@ -269,6 +284,149 @@ public class ClientHandler implements Runnable {
         if (out != null) {
             out.println(message);
         }
+    }
+
+    // =========================================================================
+    // HANDLER: GET_BID_HISTORY – lịch sử đặt giá dùng cho biểu đồ realtime
+    // Format: "GET_BID_HISTORY:<itemId>"
+    // =========================================================================
+    private void handleGetBidHistory(String[] parts) {
+        if (parts.length < 2) {
+            sendMessage("FAIL:Thiếu itemId");
+            return;
+        }
+        try {
+            int itemId = Integer.parseInt(parts[1].trim());
+            List<java.util.Map<String, Object>> history = bidDAO.getBidHistory(itemId);
+            sendMessage("SUCCESS:" + gson.toJson(history));
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:itemId không hợp lệ");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: ADD_ITEM – Seller thêm sản phẩm mới
+    // Format: "ADD_ITEM:<name>:<description>:<startingPrice>:<endTimeMs>"
+    // =========================================================================
+    private void handleAddItem(String[] parts) {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        // Lấy role để xác minh Seller/Admin
+        String[] info = userDAO.getUserInfo(loggedInUsername);
+        if (info == null || (!info[1].equals("SELLER") && !info[1].equals("ADMIN"))) {
+            sendMessage("FAIL:Chỉ Seller hoặc Admin mới được thêm sản phẩm");
+            return;
+        }
+        if (parts.length < 5) {
+            sendMessage("FAIL:Format: ADD_ITEM:<name>:<description>:<startingPrice>:<endTimeMs>");
+            return;
+        }
+        try {
+            String name         = parts[1].trim();
+            String description  = parts[2].trim();
+            double startPrice   = Double.parseDouble(parts[3].trim());
+            long   endTime      = Long.parseLong(parts[4].trim());
+            int    sellerId     = userDAO.getUserIdByUsername(loggedInUsername);
+
+            Item newItem = new Item(name, description, startPrice, endTime, sellerId);
+            int newId = itemDAO.addItem(newItem);
+
+            if (newId > 0) {
+                sendMessage("SUCCESS:Đã thêm sản phẩm #" + newId);
+                System.out.println("[HANDLER] " + loggedInUsername + " thêm item #" + newId + ": " + name);
+            } else {
+                sendMessage("FAIL:Không thể thêm sản phẩm. Kiểm tra lại dữ liệu.");
+            }
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:startingPrice hoặc endTimeMs không hợp lệ");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: UPDATE_ITEM – Seller sửa thông tin sản phẩm (chỉ khi còn OPEN)
+    // Format: "UPDATE_ITEM:<itemId>:<name>:<description>:<startingPrice>:<endTimeMs>"
+    // =========================================================================
+    private void handleUpdateItem(String[] parts) {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        String[] info = userDAO.getUserInfo(loggedInUsername);
+        if (info == null || (!info[1].equals("SELLER") && !info[1].equals("ADMIN"))) {
+            sendMessage("FAIL:Chỉ Seller hoặc Admin mới được sửa sản phẩm");
+            return;
+        }
+        if (parts.length < 6) {
+            sendMessage("FAIL:Format: UPDATE_ITEM:<itemId>:<name>:<description>:<startingPrice>:<endTimeMs>");
+            return;
+        }
+        try {
+            int    itemId      = Integer.parseInt(parts[1].trim());
+            String name        = parts[2].trim();
+            String description = parts[3].trim();
+            double startPrice  = Double.parseDouble(parts[4].trim());
+            long   endTime     = Long.parseLong(parts[5].trim());
+
+            boolean ok = itemDAO.updateItem(itemId, name, description, startPrice, endTime);
+            if (ok) {
+                sendMessage("SUCCESS:Đã cập nhật sản phẩm #" + itemId);
+            } else {
+                sendMessage("FAIL:Không thể sửa. Phiên có thể đã RUNNING hoặc không tồn tại.");
+            }
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:Dữ liệu số không hợp lệ");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: DELETE_ITEM – xóa sản phẩm (chỉ khi OPEN/FINISHED/CANCELED)
+    // Format: "DELETE_ITEM:<itemId>"
+    // =========================================================================
+    private void handleDeleteItem(String[] parts) {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        String[] info = userDAO.getUserInfo(loggedInUsername);
+        if (info == null || (!info[1].equals("SELLER") && !info[1].equals("ADMIN"))) {
+            sendMessage("FAIL:Chỉ Seller hoặc Admin mới được xóa sản phẩm");
+            return;
+        }
+        if (parts.length < 2) {
+            sendMessage("FAIL:Thiếu itemId");
+            return;
+        }
+        try {
+            int itemId = Integer.parseInt(parts[1].trim());
+            boolean ok = itemDAO.deleteItem(itemId);
+            if (ok) {
+                sendMessage("SUCCESS:Đã xóa sản phẩm #" + itemId);
+            } else {
+                sendMessage("FAIL:Không thể xóa. Phiên đang RUNNING hoặc không tồn tại.");
+            }
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:itemId không hợp lệ");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: GET_MY_ITEMS – Seller xem danh sách sản phẩm của mình
+    // Format: "GET_MY_ITEMS"
+    // =========================================================================
+    private void handleGetMyItems() {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        int sellerId = userDAO.getUserIdByUsername(loggedInUsername);
+        if (sellerId < 0) {
+            sendMessage("FAIL:Không tìm thấy thông tin người dùng");
+            return;
+        }
+        List<Item> myItems = itemDAO.getItemsBySeller(sellerId);
+        sendMessage("SUCCESS:" + gson.toJson(myItems));
     }
 
     // =========================================================================
