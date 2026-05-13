@@ -33,7 +33,7 @@ public class ItemDAOTest {
 
         // Tạo 1 item mẫu vào bảng items (trạng thái RUNNING, giá khởi điểm 100)
         String sql = "INSERT INTO items (name, description, starting_price, current_highest_bid, "
-                + "highest_bidder_username, status, end_time, seller_id) "
+                + "highest_bidder, status, end_time, seller_id) "
                 + "VALUES (?, 'Mô tả test', 100.0, 100.0, 'Chưa có', 'RUNNING', "
                 + "(UNIX_TIMESTAMP() + 3600) * 1000, 1)";
 
