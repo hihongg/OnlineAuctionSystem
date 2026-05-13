@@ -6,22 +6,31 @@ import javafx.scene.Scene;
 import javafx.stage.Stage;
 import javafx.scene.Node;
 import javafx.event.ActionEvent;
-import java.io.File;
 import java.net.URL;
 
 public class NavigationUtils {
     public void switchScene(ActionEvent event, String fxmlPath, String title) throws Exception {
-        // Dùng getResource chuẩn xác hơn dùng File rất nhiều
+        // Lấy đường dẫn file giao diện
         URL url = getClass().getResource(fxmlPath);
         if (url == null) {
             throw new RuntimeException("Không tìm thấy file FXML: " + fxmlPath);
         }
 
+        // Tải giao diện mới lên
         Parent root = FXMLLoader.load(url);
         Stage stage = (Stage) ((Node) event.getSource()).getScene().getWindow();
         stage.setTitle(title);
-        stage.setScene(new Scene(root));
-        stage.centerOnScreen();
+
+        // KHẮC PHỤC LỖI: Thay "ruột" của Scene hiện tại thay vì tạo Scene mới liên tục
+        Scene currentScene = stage.getScene();
+        if (currentScene != null) {
+            currentScene.setRoot(root);
+        } else {
+            stage.setScene(new Scene(root));
+        }
+
+        // Đảm bảo luôn giữ trạng thái phóng to cửa sổ
+
         stage.show();
     }
 }

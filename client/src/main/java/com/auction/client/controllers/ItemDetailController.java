@@ -1,5 +1,10 @@
 package com.auction.client.controllers;
 
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
+import javafx.util.Duration;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import com.auction.client.models.AuctionItem;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
@@ -17,12 +22,31 @@ public class ItemDetailController {
     private AuctionItem currentItem;
 
     // Hàm này được gọi từ MainDashboardController để truyền dữ liệu sang
+    // Hàm này được gọi từ MainDashboardController để truyền dữ liệu sang
     public void setAuctionItem(AuctionItem item) {
         this.currentItem = item;
         lblName.setText(item.getName());
         lblPrice.setText("Giá hiện tại: $" + item.getCurrentBid());
-        // Tạm thời hiển thị text tĩnh, bạn có thể copy logic Timeline sang đây sau
-        lblTime.setText("Chi tiết thời gian sẽ đồng bộ sau");
+
+        // --- BẮT ĐẦU ĐOẠN CODE ĐẾM NGƯỢC ---
+        Timeline timeline = new Timeline(new KeyFrame(Duration.seconds(1), event -> {
+            LocalDateTime currentTime = LocalDateTime.now();
+
+            if (currentTime.isAfter(item.getEndTime()) || currentTime.isEqual(item.getEndTime())) {
+                lblTime.setText("⏱ Đã kết thúc");
+                lblTime.setStyle("-fx-text-fill: #7f8c8d; -fx-font-size: 16px; -fx-font-style: italic;");
+                txtBidAmount.setDisable(true); // Khóa luôn ô nhập tiền nếu đã hết giờ
+            } else {
+                long hours = ChronoUnit.HOURS.between(currentTime, item.getEndTime());
+                long minutes = ChronoUnit.MINUTES.between(currentTime, item.getEndTime()) % 60;
+                long seconds = ChronoUnit.SECONDS.between(currentTime, item.getEndTime()) % 60;
+
+                lblTime.setText(String.format("⏱ Thời gian còn lại: %02d:%02d:%02d", hours, minutes, seconds));
+            }
+        }));
+        timeline.setCycleCount(Timeline.INDEFINITE);
+        timeline.play();
+        // --- KẾT THÚC ĐOẠN CODE ĐẾM NGƯỢC ---
     }
 
     @FXML

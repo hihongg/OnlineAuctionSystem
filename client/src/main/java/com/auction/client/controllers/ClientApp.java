@@ -16,6 +16,7 @@ public class ClientApp extends Application {
         primaryStage.setTitle("Online Auction System - Login");
         primaryStage.setScene(new Scene(root, 800, 500));
         primaryStage.centerOnScreen();
+        primaryStage.setMaximized(true);
         primaryStage.show();
     }
 

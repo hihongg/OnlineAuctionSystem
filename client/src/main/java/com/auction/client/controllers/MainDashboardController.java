@@ -125,7 +125,8 @@ public class MainDashboardController implements Initializable {
                 detailController.setAuctionItem(item);
 
                 Stage stage = (Stage) ((javafx.scene.Node) event.getSource()).getScene().getWindow();
-                stage.setScene(new Scene(root));
+                stage.getScene().setRoot(root);
+
                 stage.show();
             } catch (Exception e) {
                 e.printStackTrace();
@@ -146,6 +147,16 @@ public class MainDashboardController implements Initializable {
         } catch (Exception e) {
             e.printStackTrace();
             System.out.println("Lỗi khi quay lại màn hình Login");
+        }
+    }
+    @FXML
+    public void showCreateAuctionForm(ActionEvent event) {
+        try {
+            com.auction.client.utils.NavigationUtils navUtils = new com.auction.client.utils.NavigationUtils();
+            // Gọi công cụ chuyển cảnh sang màn hình Đăng bán (chúng ta sẽ tạo file này ở Bước 2)
+            navUtils.switchScene(event, "/CreateItem.fxml", "Online Auction System - Đăng bán sản phẩm");
+        } catch (Exception e) {
+            System.out.println("Bạn chưa tạo file CreateItem.fxml, hãy làm tiếp Bước 2 nhé!");
         }
     }
 }
