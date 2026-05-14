@@ -1,0 +1,136 @@
+# ============================================================
+# CI/CD Pipeline — Online Auction System
+# ============================================================
+# Kích hoạt khi:
+#   - Push lên nhánh main hoặc develop
+#   - Tạo Pull Request vào main
+#
+# Các bước:
+#   1. Khởi động MySQL service container
+#   2. Setup Java 17
+#   3. Khởi tạo database auction_db
+#   4. Build module shared
+#   5. Chạy toàn bộ JUnit test của module server
+#   6. Build tất cả module (đóng gói JAR)
+#   7. Upload kết quả test (luôn chạy, kể cả khi test thất bại)
+# ============================================================
+
+name: Java CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    # ----------------------------------------------------------
+    # MySQL Service Container
+    # Chạy song song với các steps bên dưới.
+    # Các biến DB_URL/DB_USER/DB_PASS trong step "Run Tests"
+    # sẽ trỏ đến container này thay vì MySQL máy thật.
+    # ----------------------------------------------------------
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: auction_db
+        ports:
+          - 3306:3306
+        # Health check: chờ MySQL thật sự sẵn sàng nhận kết nối
+        # trước khi các step tiếp theo chạy
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      # ----------------------------------------------------------
+      # Bước 1: Checkout code
+      # ----------------------------------------------------------
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------------
+      # Bước 2: Setup Java 17 + cache Maven dependencies
+      # cache: maven giúp lần build sau nhanh hơn (~30-60 giây)
+      # bằng cách tái sử dụng JAR đã tải trong ~/.m2/repository
+      # ----------------------------------------------------------
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      # ----------------------------------------------------------
+      # Bước 3: Chờ MySQL sẵn sàng rồi khởi tạo database
+      # mysqladmin ping kiểm tra MySQL đã nhận kết nối chưa.
+      # Cần thiết vì health check của service container
+      # đôi khi pass trước khi MySQL thật sự ready.
+      # ----------------------------------------------------------
+      - name: Wait for MySQL and init database
+        run: |
+          echo "Chờ MySQL khởi động hoàn toàn..."
+          for i in {1..20}; do
+            if mysqladmin ping -h 127.0.0.1 -P 3306 -uroot -proot --silent 2>/dev/null; then
+              echo "MySQL đã sẵn sàng sau $i lần thử."
+              break
+            fi
+            echo "  Lần $i: chưa sẵn sàng, chờ 3 giây..."
+            sleep 3
+          done
+
+          echo "Khởi tạo schema auction_db..."
+          mysql -h 127.0.0.1 -P 3306 -uroot -proot < sql/auction_db.sql
+          echo "Database đã sẵn sàng."
+
+      # ----------------------------------------------------------
+      # Bước 4: Build module shared (server và client đều phụ thuộc)
+      # -q: quiet output, -DskipTests: không test shared (không có test)
+      # install: cài vào ~/.m2/repository để các module con dùng được
+      # ----------------------------------------------------------
+      - name: Build shared module
+        run: mvn install -pl shared -q -DskipTests
+
+      # ----------------------------------------------------------
+      # Bước 5: Chạy JUnit tests của module server
+      # --batch-mode: tắt ANSI color (log CI dễ đọc hơn)
+      # Biến môi trường ghi đè DatabaseConnection để trỏ vào
+      # MySQL container thay vì localhost của dev.
+      # ----------------------------------------------------------
+      - name: Run server unit tests
+        run: mvn test -pl server --batch-mode
+        env:
+          DB_URL: >-
+            jdbc:mysql://127.0.0.1:3306/auction_db
+            ?useSSL=false
+            &serverTimezone=Asia/Ho_Chi_Minh
+            &allowPublicKeyRetrieval=true
+          DB_USER: root
+          DB_PASS: root
+
+      # ----------------------------------------------------------
+      # Bước 6: Build tất cả module (đóng gói JAR)
+      # -DskipTests: test đã chạy ở bước 5, không cần chạy lại
+      # ----------------------------------------------------------
+      - name: Package all modules
+        run: mvn package -DskipTests --batch-mode
+
+      # ----------------------------------------------------------
+      # Bước 7: Upload kết quả test (Surefire XML reports)
+      # if: always() → upload kể cả khi test thất bại
+      # → Xem chi tiết test nào fail trực tiếp trên GitHub Actions
+      # ----------------------------------------------------------
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-test-reports
+          path: server/target/surefire-reports/
+          retention-days: 7
