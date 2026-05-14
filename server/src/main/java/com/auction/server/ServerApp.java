@@ -1,9 +1,13 @@
 package com.auction.server;
 
 import com.auction.server.network.AuctionServer;
-import com.auction.server.utils.DatabaseConnection; // Điều chỉnh import theo đúng package của bạn
+import com.auction.server.utils.DatabaseConnection;
 
 public class ServerApp {
+
+    // Cổng phải khớp với DEFAULT_PORT trong ClientSocketManager.java (client)
+    private static final int PORT = 12345;
+
     public static void main(String[] args) {
         System.out.println("=== HỆ THỐNG ĐẤU GIÁ TRỰC TUYẾN - SERVER KHỞI ĐỘNG ===");
 
@@ -15,21 +19,23 @@ public class ServerApp {
         } catch (Exception e) {
             System.err.println("[DB] Lỗi kết nối CSDL: " + e.getMessage());
             System.err.println("[SERVER] Máy chủ không thể hoạt động nếu thiếu DB. Đang tắt hệ thống...");
-            return; // Dừng chương trình nếu không có DB
+            return;
         }
 
-        // 2. Thiết lập cổng (Port) cho Server
-        int port = 8080; // Bạn có thể thống nhất cổng này với các bạn làm Client
+        // 2. Khởi tạo Server
+        AuctionServer server = new AuctionServer(PORT);
 
-        // 3. Khởi tạo và chạy mạng (Network Socket)
-        try {
-            AuctionServer server = new AuctionServer(port);
-            System.out.println("[SERVER] Máy chủ đã sẵn sàng. Đang lắng nghe kết nối tại cổng: " + port);
+        // 3. Shutdown hook — đảm bảo giải phóng tài nguyên khi tắt server
+        //    (Ctrl+C, kill, hoặc System.exit() đều kích hoạt hook này)
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("\n[SERVER] Đang tắt hệ thống...");
+            server.shutdown();          // dừng scheduler + thread pool
+            DatabaseConnection.shutdown(); // đóng HikariCP connection pool
+            System.out.println("[SERVER] Đã tắt an toàn.");
+        }, "ShutdownHook"));
 
-            // Hàm start() sẽ có vòng lặp while(true) để liên tục nhận Client
-            server.start();
-        } catch (Exception e) {
-            System.err.println("[SERVER] Lỗi khi chạy máy chủ: " + e.getMessage());
-        }
+        // 4. Bắt đầu lắng nghe kết nối (vòng lặp vô hạn cho đến khi process bị kill)
+        System.out.println("[SERVER] Máy chủ đã sẵn sàng. Đang lắng nghe tại cổng: " + PORT);
+        server.start();
     }
 }
