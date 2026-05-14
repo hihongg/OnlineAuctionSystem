@@ -20,17 +20,28 @@ import java.util.List;
  *
  * GIAO THỨC (Protocol):
  *   Client → Server (plain text, dấu ":"  phân cách):
- *     "REGISTER:<username>:<password>"
- *     "LOGIN:<username>:<password>"
- *     "GET_ITEMS"
- *     "PLACE_BID:<itemId>:<bidAmount>"
+ *   ┌─────────────────────────────────────────────────────────────────────┐
+ *   │  LỆNH               │  THAM SỐ                      │  AI GỌI    │
+ *   ├─────────────────────┼───────────────────────────────┼────────────┤
+ *   │  REGISTER           │  <user>:<pass>[:<role>]       │  Mọi người │
+ *   │  LOGIN              │  <user>:<pass>                │  Mọi người │
+ *   │  GET_ITEMS          │  (không có)                   │  Mọi người │
+ *   │  GET_ITEM_BY_ID     │  <itemId>                     │  Đã login  │
+ *   │  GET_ALL_ITEMS      │  (không có)                   │  ADMIN     │
+ *   │  GET_MY_ITEMS       │  (không có)                   │  SELLER    │
+ *   │  PLACE_BID          │  <itemId>:<amount>            │  BIDDER    │
+ *   │  GET_BID_HISTORY    │  <itemId>                     │  Đã login  │
+ *   │  ADD_ITEM           │  <name>:<desc>:<price>:<end>  │  SELLER    │
+ *   │  UPDATE_ITEM        │  <id>:<name>:<desc>:<p>:<end> │  SELLER    │
+ *   │  DELETE_ITEM        │  <itemId>                     │  SELLER    │
+ *   └─────────────────────┴───────────────────────────────┴────────────┘
  *
- *   Server → Client (plain text):
- *     "SUCCESS"          – thao tác thành công
- *     "SUCCESS:<data>"   – thành công kèm dữ liệu JSON
- *     "FAIL:<lý do>"     – thao tác thất bại
+ *   Server → Client:
+ *     "SUCCESS"            – thao tác thành công, không có dữ liệu kèm
+ *     "SUCCESS:<data>"     – thành công, data là JSON hoặc chuỗi mô tả
+ *     "FAIL:<lý do>"       – thao tác thất bại kèm lý do
  *     "BID_UPDATE:<json>"  – broadcast khi có bid mới
- *     "AUCTION_ENDED:<msg>" – broadcast khi phiên kết thúc
+ *     "AUCTION_ENDED:<msg>"– broadcast khi phiên đấu giá kết thúc
  */
 public class ClientHandler implements Runnable {
 
@@ -98,7 +109,9 @@ public class ClientHandler implements Runnable {
         }
 
         // Plain text protocol: "ACTION:arg1:arg2:..."
-        String[] parts = raw.split(":", 4); // tối đa 4 phần để bảo vệ password có dấu ":"
+        // split giới hạn 6 phần — đủ cho lệnh dài nhất (UPDATE_ITEM có 6 tham số).
+        // Không dùng split không giới hạn để tránh tấn công DoS bằng chuỗi quá nhiều ":"
+        String[] parts = raw.split(":", 6);
         String action = parts[0].toUpperCase();
 
         switch (action) {
@@ -110,6 +123,14 @@ public class ClientHandler implements Runnable {
                 break;
             case "GET_ITEMS":
                 handleGetItems();
+                break;
+            case "GET_ITEM_BY_ID":
+                // Lấy chi tiết 1 sản phẩm — dùng cho màn hình ItemDetail
+                handleGetItemById(parts);
+                break;
+            case "GET_ALL_ITEMS":
+                // Lấy toàn bộ sản phẩm mọi trạng thái — chỉ dành cho Admin
+                handleGetAllItems();
                 break;
             case "PLACE_BID":
                 handlePlaceBid(parts);
@@ -155,28 +176,56 @@ public class ClientHandler implements Runnable {
 
     // =========================================================================
     // HANDLER: REGISTER
-    // Format: "REGISTER:<username>:<password>"
+    // Format ngắn : "REGISTER:<username>:<password>"           → role = BIDDER
+    // Format đầy đủ: "REGISTER:<username>:<password>:<role>"  → BIDDER hoặc SELLER
+    //
+    // LƯU Ý: Admin KHÔNG thể tự đăng ký — chỉ được tạo thủ công trong DB.
     // =========================================================================
     private void handleRegister(String[] parts) {
         if (parts.length < 3) {
-            sendMessage("FAIL:Thiếu thông tin đăng ký");
+            sendMessage("FAIL:Thiếu thông tin. Format: REGISTER:<username>:<password> hoặc REGISTER:<username>:<password>:<role>");
             return;
         }
+
         String username = parts[1].trim();
         String password = parts[2].trim();
 
+        // --- Validate username & password ---
         if (username.isEmpty() || password.isEmpty()) {
             sendMessage("FAIL:Username và password không được để trống");
             return;
         }
+        if (username.length() < 3 || username.length() > 50) {
+            sendMessage("FAIL:Username phải từ 3–50 ký tự");
+            return;
+        }
+        if (password.length() < 6) {
+            sendMessage("FAIL:Password phải có ít nhất 6 ký tự");
+            return;
+        }
 
-        // Dùng username làm email (client hiện tại gửi email vào trường username)
-        boolean success = userDAO.registerUser(username, password, username, "BIDDER");
+        // --- Xác định role (parts[3] nếu có, mặc định BIDDER) ---
+        // split(":", 4) cho tối đa 4 phần → parts[3] là role nếu client gửi
+        String role = "BIDDER";
+        if (parts.length >= 4 && !parts[3].trim().isEmpty()) {
+            role = parts[3].trim().toUpperCase();
+        }
+
+        // Chỉ cho phép BIDDER hoặc SELLER tự đăng ký; ADMIN phải tạo thủ công
+        if (!role.equals("BIDDER") && !role.equals("SELLER")) {
+            sendMessage("FAIL:Role không hợp lệ. Chỉ chấp nhận BIDDER hoặc SELLER");
+            return;
+        }
+
+        // --- Ghi vào DB ---
+        // Email tạm = username@auction.local (client hiện tại chưa gửi email riêng)
+        String email = username + "@auction.local";
+        boolean success = userDAO.registerUser(username, password, email, role);
 
         if (success) {
-            loggedInUsername = username; // Tự động đăng nhập sau đăng ký
-            System.out.println("[HANDLER] Đăng ký thành công: " + username);
-            sendMessage("SUCCESS");
+            loggedInUsername = username; // Tự động đăng nhập ngay sau đăng ký
+            System.out.println("[HANDLER] Đăng ký thành công: " + username + " (" + role + ")");
+            sendMessage("SUCCESS:" + role); // Trả role về để client hiển thị đúng giao diện
         } else {
             sendMessage("FAIL:Username đã tồn tại hoặc lỗi server");
         }
@@ -211,14 +260,77 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // HANDLER: GET_ITEMS – trả danh sách sản phẩm đang RUNNING về client
+    // HANDLER: GET_ITEMS – danh sách sản phẩm đang RUNNING (dành cho Bidder)
     // Format: "GET_ITEMS"
+    // Ai gọi được: mọi client (kể cả chưa đăng nhập — trang chủ hiển thị list)
     // =========================================================================
     private void handleGetItems() {
         List<Item> items = itemDAO.getActiveItems();
         String json = gson.toJson(items);
         sendMessage("SUCCESS:" + json);
-        System.out.println("[HANDLER] Gửi " + items.size() + " sản phẩm cho client.");
+        System.out.println("[HANDLER] Gửi " + items.size() + " sản phẩm RUNNING cho client.");
+    }
+
+    // =========================================================================
+    // HANDLER: GET_ITEM_BY_ID – chi tiết 1 sản phẩm (dành cho màn hình detail)
+    // Format: "GET_ITEM_BY_ID:<itemId>"
+    // Ai gọi được: bất kỳ client đã đăng nhập
+    //
+    // Tại sao cần lệnh này thay vì dùng GET_ITEMS?
+    //   GET_ITEMS chỉ trả RUNNING items — sau khi phiên FINISHED,
+    //   Bidder vẫn cần xem kết quả (người thắng, giá cuối).
+    //   GET_ITEM_BY_ID trả item bất kể trạng thái.
+    // =========================================================================
+    private void handleGetItemById(String[] parts) {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        if (parts.length < 2 || parts[1].trim().isEmpty()) {
+            sendMessage("FAIL:Thiếu itemId. Format: GET_ITEM_BY_ID:<itemId>");
+            return;
+        }
+        try {
+            int itemId = Integer.parseInt(parts[1].trim());
+            Item item = itemDAO.getItemById(itemId);
+
+            if (item != null) {
+                sendMessage("SUCCESS:" + gson.toJson(item));
+                System.out.println("[HANDLER] Gửi chi tiết item #" + itemId
+                        + " (" + item.getName() + ") cho " + loggedInUsername);
+            } else {
+                sendMessage("FAIL:Không tìm thấy sản phẩm #" + itemId);
+            }
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:itemId phải là số nguyên");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: GET_ALL_ITEMS – toàn bộ sản phẩm mọi trạng thái (chỉ Admin)
+    // Format: "GET_ALL_ITEMS"
+    // Ai gọi được: ADMIN
+    //
+    // Trả về list gồm tất cả status: OPEN, RUNNING, FINISHED, PAID, CANCELED
+    // → Admin dùng để quản lý, thống kê, hoặc can thiệp thủ công.
+    // =========================================================================
+    private void handleGetAllItems() {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+
+        // Kiểm tra quyền Admin
+        String[] info = userDAO.getUserInfo(loggedInUsername);
+        if (info == null || !info[1].equals("ADMIN")) {
+            sendMessage("FAIL:Chỉ Admin mới có quyền xem toàn bộ danh sách sản phẩm");
+            return;
+        }
+
+        List<Item> allItems = itemDAO.getAllItems();
+        sendMessage("SUCCESS:" + gson.toJson(allItems));
+        System.out.println("[HANDLER] Admin " + loggedInUsername
+                + " lấy toàn bộ " + allItems.size() + " sản phẩm.");
     }
 
     // =========================================================================

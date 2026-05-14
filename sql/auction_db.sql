@@ -15,15 +15,21 @@ USE auction_db;
 CREATE TABLE IF NOT EXISTS users (
                                      id       INT          AUTO_INCREMENT PRIMARY KEY,
                                      username VARCHAR(50)  NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,          -- TODO: hash trước khi lưu (bcrypt/MD5)
-    email    VARCHAR(100),
-    role     ENUM('BIDDER', 'SELLER', 'ADMIN') NOT NULL DEFAULT 'BIDDER',
+    password   VARCHAR(255) NOT NULL,          -- Lưu SHA-256 hash, KHÔNG lưu plain text
+    email      VARCHAR(100),
+    role       ENUM('BIDDER', 'SELLER', 'ADMIN') NOT NULL DEFAULT 'BIDDER',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
 -- Admin mặc định để test
-INSERT IGNORE INTO users (username, password, email, role)
-VALUES ('admin', 'admin123', 'admin@auction.com', 'ADMIN');
+-- QUAN TRỌNG: password phải là SHA-256 của chuỗi gốc, vì UserDAO.hashPassword() dùng SHA-256.
+--   SHA-256('admin123') = 240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9
+--   SHA-256('seller123') = 5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8  (= 'password')
+--   Tính hash mới: echo -n "chuỗi_của_bạn" | sha256sum
+INSERT IGNORE INTO users (username, password, email, role) VALUES
+    ('admin',  '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'admin@auction.com',  'ADMIN'),
+    ('seller1', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'seller1@auction.com', 'SELLER'), -- 'password8'
+    ('bidder1', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'bidder1@auction.com', 'BIDDER'); -- 'password8'
 
 -- ------------------------------------------------------------
 -- Bảng sản phẩm đấu giá
