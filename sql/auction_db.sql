@@ -78,5 +78,5 @@ CREATE TABLE IF NOT EXISTS bid_history (
     );
 
 -- Index để getBidHistory() chạy nhanh (query theo item_id + order by time)
-CREATE INDEX IF NOT EXISTS idx_bid_history_item
+CREATE INDEX idx_bid_history_item
     ON bid_history (item_id, bid_time);
