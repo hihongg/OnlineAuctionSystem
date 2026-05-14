@@ -20,20 +20,46 @@ import java.sql.SQLException;
  *   try (Connection conn = DatabaseConnection.getConnection()) {
  *       // dùng conn...
  *   }  // ← tự động trả connection về pool khi ra khỏi try
+ *
+ * ──────────────────────────────────────────────────────────────────────────
+ * CẤU HÌNH QUA BIẾN MÔI TRƯỜNG (ưu tiên hơn giá trị mặc định):
+ *
+ *   Biến môi trường  │ Mặc định (dev local)
+ *   ─────────────────┼──────────────────────────────────────────────────────
+ *   DB_URL           │ jdbc:mysql://localhost:3306/auction_db?...
+ *   DB_USER          │ root
+ *   DB_PASS          │ 123456
+ *
+ * Trên CI (GitHub Actions), workflow tự set các biến này trỏ tới
+ * MySQL service container — không cần sửa code khi deploy.
+ *
+ * Trên máy local, không cần set gì — dùng giá trị mặc định bên dưới.
+ * ──────────────────────────────────────────────────────────────────────────
  */
 public class DatabaseConnection {
 
     // -------------------------------------------------------------------------
-    // Cấu hình — chỉnh sửa 3 hằng này cho khớp với môi trường của bạn
+    // Đọc cấu hình theo thứ tự ưu tiên:
+    //   1. Biến môi trường (CI / production)
+    //   2. Giá trị mặc định hardcode (dev local)
+    //
+    // Tại sao dùng env var thay vì hardcode?
+    //   - Không lộ mật khẩu thật trong mã nguồn commit lên GitHub.
+    //   - CI/CD có thể ghi đè mà không cần sửa code.
+    //   - Dễ deploy lên nhiều môi trường (dev / staging / production).
     // -------------------------------------------------------------------------
-    private static final String URL      = "jdbc:mysql://localhost:3306/auction_db"
-            + "?useSSL=false&serverTimezone=Asia/Ho_Chi_Minh"
-            + "&allowPublicKeyRetrieval=true";
-    private static final String DB_USER  = "root";
-    private static final String DB_PASS  = "123456";
+    private static final String DEFAULT_URL =
+            "jdbc:mysql://localhost:3306/auction_db"
+                    + "?useSSL=false"
+                    + "&serverTimezone=Asia/Ho_Chi_Minh"
+                    + "&allowPublicKeyRetrieval=true";
+
+    private static final String URL     = getEnv("DB_URL",  DEFAULT_URL);
+    private static final String DB_USER = getEnv("DB_USER", "root");
+    private static final String DB_PASS = getEnv("DB_PASS", "123456");
 
     // -------------------------------------------------------------------------
-    // Pool (khởi tạo một lần khi class được load)
+    // Pool (khởi tạo một lần khi class được load lần đầu)
     // -------------------------------------------------------------------------
     private static final HikariDataSource DATA_SOURCE;
 
@@ -59,10 +85,10 @@ public class DatabaseConnection {
         config.setPoolName("AuctionPool");
 
         DATA_SOURCE = new HikariDataSource(config);
-        System.out.println("[DB] Connection pool đã khởi tạo thành công.");
+        System.out.println("[DB] Connection pool đã khởi tạo: " + maskUrl(URL));
     }
 
-    // Constructor private — không cho phép tạo instance
+    // Constructor private — không cho phép tạo instance (Singleton pattern)
     private DatabaseConnection() {}
 
     /**
@@ -86,5 +112,25 @@ public class DatabaseConnection {
             DATA_SOURCE.close();
             System.out.println("[DB] Connection pool đã đóng.");
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // HELPER: đọc biến môi trường, dùng giá trị mặc định nếu không có
+    // -------------------------------------------------------------------------
+    private static String getEnv(String key, String defaultValue) {
+        String value = System.getenv(key);
+        if (value != null && !value.isBlank()) {
+            System.out.println("[DB] Dùng biến môi trường: " + key);
+            return value;
+        }
+        return defaultValue;
+    }
+
+    // -------------------------------------------------------------------------
+    // HELPER: ẩn password trong URL khi in ra log (bảo mật)
+    // -------------------------------------------------------------------------
+    private static String maskUrl(String url) {
+        // Ẩn phần sau "password=" nếu có trong URL
+        return url.replaceAll("password=[^&]+", "password=***");
     }
 }
