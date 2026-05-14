@@ -6,34 +6,46 @@ import com.auction.client.utils.NavigationUtils;
 import com.auction.shared.models.Item;
 import com.auction.shared.models.Message;
 import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
+import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
+import javafx.scene.chart.CategoryAxis;
+import javafx.scene.chart.LineChart;
+import javafx.scene.chart.NumberAxis;
+import javafx.scene.chart.XYChart;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.util.Duration;
 
+import java.lang.reflect.Type;
 import java.net.URL;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
 import java.util.ResourceBundle;
 import java.util.function.Consumer;
 
 /**
  * Controller màn hình chi tiết đấu giá (ItemDetail.fxml).
  *
- * Thay đổi quan trọng so với bản cũ:
- *   1. handlePlaceBid() → gửi lệnh PLACE_BID tới server thật (thay vì chỉ cập nhật local)
- *   2. Đăng ký broadcast listener → nhận BID_UPDATE realtime từ server
- *      (khi người khác đặt giá, UI tự cập nhật không cần refresh)
- *   3. Đồng hồ đếm ngược theo endTime thật từ server
+ * Thêm mới so với bản cũ:
+ *   1. {@link #loadBidHistory} — tải lịch sử giá từ server, vẽ LineChart
+ *   2. {@link #handleBidUpdate} — thêm điểm mới lên chart mỗi khi có BID_UPDATE
+ *   3. {@link #handleRegisterAutoBid} — đăng ký auto-bid với server
+ *   4. {@link #handleCancelAutoBid} — hủy auto-bid
  */
 public class ItemDetailController implements Initializable {
 
     // =========================================================================
-    // FXML BINDINGS
+    // FXML BINDINGS — phần thông tin sản phẩm + đặt giá thủ công
     // =========================================================================
     @FXML private Label     lblName;
+    @FXML private Label     lblDescription;
     @FXML private Label     lblPrice;
     @FXML private Label     lblWinner;
     @FXML private Label     lblTime;
@@ -41,18 +53,38 @@ public class ItemDetailController implements Initializable {
     @FXML private Label     lblMessage;
 
     // =========================================================================
+    // FXML BINDINGS — Auto-Bidding
+    // =========================================================================
+    @FXML private TextField txtMaxBid;
+    @FXML private TextField txtIncrement;
+    @FXML private Label     lblAutoBidStatus;
+
+    // =========================================================================
+    // FXML BINDINGS — Biểu đồ lịch sử giá
+    // =========================================================================
+    @FXML private LineChart<String, Number>  bidChart;
+    @FXML private CategoryAxis               chartXAxis;
+    @FXML private NumberAxis                 chartYAxis;
+    @FXML private Label                      lblChartStatus;
+
+    // =========================================================================
     // STATE
     // =========================================================================
-    private AuctionItem currentItem;  // model dùng cho UI (từ Dashboard)
+    private AuctionItem currentItem;
     private int         currentItemId;
-    private long        endTimeMs;    // milliseconds, đồng bộ từ server
+    private long        endTimeMs;
     private Timeline    countdownTimer;
     private final Gson  gson = new Gson();
 
+    // Series duy nhất trên biểu đồ — thêm điểm vào đây khi có bid mới
+    private final XYChart.Series<String, Number> bidSeries = new XYChart.Series<>();
+
+    // Format timestamp milliseconds → "HH:mm:ss" cho nhãn trục X
+    private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm:ss");
+
     /**
-     * Broadcast listener — lưu vào field để có thể removeBroadcastListener() sau này.
-     * Lambda hoặc method reference KHÔNG dùng được vì mỗi lần tạo là object khác nhau
-     * → không remove được. Phải lưu cùng 1 reference.
+     * Broadcast listener — phải lưu reference để removeBroadcastListener() hoạt động đúng.
+     * Không dùng lambda inline vì mỗi lần tạo là object khác nhau → remove được.
      */
     private final Consumer<Message> broadcastListener = this::handleBroadcast;
 
@@ -61,31 +93,108 @@ public class ItemDetailController implements Initializable {
     // =========================================================================
     @Override
     public void initialize(URL location, ResourceBundle resources) {
-        // Đăng ký nhận broadcast từ server ngay khi màn hình mở
+        // Thiết lập biểu đồ
+        bidSeries.setName("Giá đấu ($)");
+        bidChart.getData().add(bidSeries);
+        bidChart.setLegendVisible(false);
+
+        // Đăng ký nhận broadcast realtime từ server
         ClientSocketManager.getInstance().addBroadcastListener(broadcastListener);
-        System.out.println("[DETAIL] Đã đăng ký broadcast listener.");
     }
 
     /**
-     * Được gọi từ MainDashboardController trước khi hiển thị màn hình này.
-     * Truyền vào item đã chọn và đồng bộ dữ liệu mới nhất từ server.
+     * Gọi từ MainDashboardController trước khi hiển thị màn hình.
+     * Truyền item đã chọn, sau đó tải lịch sử giá và khởi động đếm ngược.
      */
     public void setAuctionItem(AuctionItem item) {
         this.currentItem   = item;
         this.currentItemId = item.getId();
         this.endTimeMs     = item.getEndTimeMs();
 
-        // Hiển thị dữ liệu ban đầu
+        // Cập nhật UI ban đầu
         lblName.setText(item.getName());
+        lblDescription.setText(item.getDescription() != null ? item.getDescription() : "");
         lblPrice.setText(String.format("Giá hiện tại: $%.2f", item.getCurrentBid()));
         lblWinner.setText("Người dẫn đầu: " + item.getHighestBidder());
 
-        // Khởi động đồng hồ đếm ngược theo endTime từ server
+        // Khởi động đồng hồ đếm ngược
         startCountdown();
+
+        // Tải lịch sử giá từ server (background thread để không đóng băng UI)
+        loadBidHistory(currentItemId);
     }
 
     // =========================================================================
-    // ĐẶT GIÁ — gửi PLACE_BID tới server (chạy trên background thread)
+    // BIỂU ĐỒ — tải lịch sử và vẽ
+    // =========================================================================
+
+    /**
+     * Gửi lệnh GET_BID_HISTORY tới server trên background thread,
+     * parse JSON response rồi vẽ chart trên JavaFX thread.
+     *
+     * Response format: "SUCCESS:[{\"username\":\"...\",\"bidAmount\":100.0,\"bidTime\":1715...}, ...]"
+     */
+    private void loadBidHistory(int itemId) {
+        new Thread(() -> {
+            String response = ClientSocketManager.getInstance()
+                    .sendRequest("GET_BID_HISTORY:" + itemId);
+
+            Platform.runLater(() -> {
+                if (response == null || response.startsWith("FAIL") ||
+                        "TIMEOUT".equals(response) || "NOT_CONNECTED".equals(response)) {
+                    lblChartStatus.setText("Không thể tải lịch sử giá.");
+                    return;
+                }
+
+                // Cắt prefix "SUCCESS:"
+                String json = response.startsWith("SUCCESS:") ? response.substring(8) : response;
+
+                try {
+                    // Parse thành List<Map<String, Object>>
+                    Type listType = new TypeToken<List<Map<String, Object>>>() {}.getType();
+                    List<Map<String, Object>> history = gson.fromJson(json, listType);
+
+                    // Xóa dữ liệu cũ (nếu có) rồi vẽ lại
+                    bidSeries.getData().clear();
+
+                    if (history == null || history.isEmpty()) {
+                        lblChartStatus.setText("Chưa có lượt đặt giá nào.");
+                        return;
+                    }
+
+                    for (Map<String, Object> entry : history) {
+                        double amount    = ((Number) entry.get("bidAmount")).doubleValue();
+                        long   timestamp = ((Number) entry.get("bidTime")).longValue();
+                        String timeLabel = timeFormat.format(new Date(timestamp));
+                        addChartPoint(timeLabel, amount);
+                    }
+
+                    lblChartStatus.setText(history.size() + " lượt đặt giá");
+
+                } catch (Exception e) {
+                    lblChartStatus.setText("Lỗi hiển thị biểu đồ.");
+                    System.err.println("[DETAIL] Lỗi parse bid history: " + e.getMessage());
+                }
+            });
+        }, "LoadBidHistoryThread").start();
+    }
+
+    /**
+     * Thêm 1 điểm dữ liệu mới lên chart.
+     * Nếu quá 60 điểm, bỏ điểm cũ nhất để chart không bị quá dày.
+     * PHẢI gọi trên JavaFX thread.
+     */
+    private void addChartPoint(String timeLabel, double price) {
+        bidSeries.getData().add(new XYChart.Data<>(timeLabel, price));
+
+        // Giới hạn hiển thị 60 điểm gần nhất để chart dễ đọc
+        if (bidSeries.getData().size() > 60) {
+            bidSeries.getData().remove(0);
+        }
+    }
+
+    // =========================================================================
+    // ĐẶT GIÁ THỦ CÔNG
     // =========================================================================
     @FXML
     public void handlePlaceBid(ActionEvent event) {
@@ -108,24 +217,20 @@ public class ItemDetailController implements Initializable {
             return;
         }
 
-        // Gửi request trên background thread để không đóng băng UI
         final double finalBid = bidAmount;
         new Thread(() -> {
             String response = ClientSocketManager.getInstance()
                     .sendRequest("PLACE_BID:" + currentItemId + ":" + finalBid);
 
-            // Cập nhật UI trở lại trên JavaFX thread
-            javafx.application.Platform.runLater(() -> {
+            Platform.runLater(() -> {
                 if (response.startsWith("SUCCESS")) {
                     showSuccess(String.format("Đặt giá $%.2f thành công!", finalBid));
                     txtBidAmount.clear();
-                    // Giá sẽ được cập nhật ngay qua broadcast BID_UPDATE từ server
+                    // Giá sẽ được cập nhật qua broadcast BID_UPDATE
                 } else if ("TIMEOUT".equals(response) || "NOT_CONNECTED".equals(response)) {
                     showError("Lỗi kết nối. Kiểm tra lại server.");
                 } else {
-                    // response dạng "FAIL:<lý do>"
-                    String reason = response.startsWith("FAIL:")
-                            ? response.substring(5) : response;
+                    String reason = response.startsWith("FAIL:") ? response.substring(5) : response;
                     showError("Thất bại: " + reason);
                 }
             });
@@ -133,13 +238,91 @@ public class ItemDetailController implements Initializable {
     }
 
     // =========================================================================
-    // XỬ LÝ BROADCAST TỪ SERVER (được gọi bởi ClientSocketManager)
+    // AUTO-BIDDING
     // =========================================================================
 
     /**
-     * Nhận mọi broadcast, lọc ra những cái liên quan đến item đang xem.
-     * Phương thức này đã chạy trên JavaFX Application Thread (đảm bảo bởi ClientSocketManager).
+     * Đăng ký auto-bid với server.
+     * Format gửi: "AUTO_BID:<itemId>:<maxBid>:<increment>"
      */
+    @FXML
+    public void handleRegisterAutoBid(ActionEvent event) {
+        String maxBidText   = txtMaxBid.getText().trim();
+        String incrementText = txtIncrement.getText().trim();
+
+        if (maxBidText.isEmpty() || incrementText.isEmpty()) {
+            showAutoBidStatus("Vui lòng nhập đầy đủ maxBid và increment.", false);
+            return;
+        }
+
+        double maxBid, increment;
+        try {
+            maxBid    = Double.parseDouble(maxBidText);
+            increment = Double.parseDouble(incrementText);
+        } catch (NumberFormatException e) {
+            showAutoBidStatus("maxBid và increment phải là số hợp lệ.", false);
+            return;
+        }
+
+        if (maxBid <= 0 || increment <= 0) {
+            showAutoBidStatus("maxBid và increment phải lớn hơn 0.", false);
+            return;
+        }
+
+        if (maxBid <= currentItem.getCurrentBid()) {
+            showAutoBidStatus(
+                    String.format("maxBid ($%.2f) phải cao hơn giá hiện tại ($%.2f).", maxBid, currentItem.getCurrentBid()),
+                    false);
+            return;
+        }
+
+        final double fMax = maxBid;
+        final double fInc = increment;
+        new Thread(() -> {
+            // Lệnh: AUTO_BID:<itemId>:<maxBid>:<increment>
+            String response = ClientSocketManager.getInstance()
+                    .sendRequest("AUTO_BID:" + currentItemId + ":" + fMax + ":" + fInc);
+
+            Platform.runLater(() -> {
+                if (response.startsWith("SUCCESS")) {
+                    showAutoBidStatus(
+                            String.format("✅ Auto-bid đã đăng ký: max $%.2f, tăng $%.2f/lượt", fMax, fInc),
+                            true);
+                } else {
+                    String reason = response.startsWith("FAIL:") ? response.substring(5) : response;
+                    showAutoBidStatus("❌ " + reason, false);
+                }
+            });
+        }, "AutoBidRegisterThread").start();
+    }
+
+    /**
+     * Hủy auto-bid — gửi lệnh CANCEL_AUTO_BID tới server.
+     */
+    @FXML
+    public void handleCancelAutoBid(ActionEvent event) {
+        new Thread(() -> {
+            String response = ClientSocketManager.getInstance()
+                    .sendRequest("CANCEL_AUTO_BID:" + currentItemId);
+
+            Platform.runLater(() -> {
+                if (response.startsWith("SUCCESS")) {
+                    showAutoBidStatus("Auto-bid đã hủy.", true);
+                    txtMaxBid.clear();
+                    txtIncrement.clear();
+                } else {
+                    String reason = response.startsWith("FAIL:") ? response.substring(5) : response;
+                    showAutoBidStatus("Không thể hủy: " + reason, false);
+                }
+            });
+        }, "CancelAutoBidThread").start();
+    }
+
+    // =========================================================================
+    // XỬ LÝ BROADCAST TỪ SERVER
+    // =========================================================================
+
+    /** Nhận mọi broadcast, lọc ra broadcast liên quan đến item đang xem. */
     private void handleBroadcast(Message msg) {
         switch (msg.getAction()) {
             case "BID_UPDATE":
@@ -152,17 +335,18 @@ public class ItemDetailController implements Initializable {
                 handleTimeExtended(msg.getPayload());
                 break;
             default:
-                // Bỏ qua các broadcast khác (ví dụ: của item khác)
                 break;
         }
     }
 
-    /** Có bid mới → cập nhật giá và người dẫn đầu */
+    /**
+     * Có bid mới → cập nhật giá, người dẫn đầu, VÀ thêm điểm mới lên biểu đồ.
+     * Chạy trên JavaFX thread (đảm bảo bởi ClientSocketManager).
+     */
     private void handleBidUpdate(String payload) {
         try {
             Item updated = gson.fromJson(payload, Item.class);
-            // Chỉ cập nhật nếu broadcast là về item đang xem
-            if (updated.getId() != currentItemId) return;
+            if (updated.getId() != currentItemId) return;   // broadcast của item khác
 
             double newBid = updated.getCurrentHighestBid();
             String winner = updated.getCurrentHighestBidder();
@@ -171,11 +355,16 @@ public class ItemDetailController implements Initializable {
             currentItem.setCurrentBid(newBid);
             currentItem.setHighestBidder(winner);
 
-            // Cập nhật UI
+            // Cập nhật labels
             lblPrice.setText(String.format("Giá hiện tại: $%.2f", newBid));
             lblWinner.setText("Người dẫn đầu: " + winner);
 
-            System.out.println("[DETAIL] Giá mới: $" + newBid + " bởi " + winner);
+            // ── Thêm điểm MỚI lên biểu đồ (thời điểm NGAY BÂY GIỜ) ──
+            String timeLabel = timeFormat.format(new Date(System.currentTimeMillis()));
+            addChartPoint(timeLabel, newBid);
+            lblChartStatus.setText(bidSeries.getData().size() + " lượt đặt giá");
+
+            System.out.println("[DETAIL] Bid mới: $" + newBid + " bởi " + winner);
 
         } catch (Exception e) {
             System.err.println("[DETAIL] Lỗi parse BID_UPDATE: " + e.getMessage());
@@ -188,25 +377,23 @@ public class ItemDetailController implements Initializable {
         lblTime.setText("⏱ Phiên đã kết thúc!");
         lblTime.setStyle("-fx-text-fill: #7f8c8d; -fx-font-style: italic;");
         lblMessage.setStyle("-fx-text-fill: #e84118;");
-        lblMessage.setText(payload); // Server đã format sẵn thông báo kết quả
+        lblMessage.setText(payload);
     }
 
     /** Anti-sniping → cập nhật endTime mới */
     private void handleTimeExtended(String payload) {
         try {
-            // payload: {"itemId":1,"newEndTime":1234567890}
             TimeExtendedPayload ext = gson.fromJson(payload, TimeExtendedPayload.class);
             if (ext.itemId != currentItemId) return;
-
             endTimeMs = ext.newEndTime;
-            System.out.println("[DETAIL] Phiên được gia hạn. EndTime mới: " + endTimeMs);
+            System.out.println("[DETAIL] Phiên gia hạn. EndTime mới: " + endTimeMs);
         } catch (Exception e) {
             System.err.println("[DETAIL] Lỗi parse TIME_EXTENDED: " + e.getMessage());
         }
     }
 
     // =========================================================================
-    // ĐỒNG HỒ ĐẾM NGƯỢC (chạy mỗi giây, dùng endTimeMs từ server)
+    // ĐỒNG HỒ ĐẾM NGƯỢC
     // =========================================================================
     private void startCountdown() {
         if (countdownTimer != null) countdownTimer.stop();
@@ -218,7 +405,6 @@ public class ItemDetailController implements Initializable {
                 long minutes = (remaining % 3_600_000) / 60_000;
                 long seconds = (remaining % 60_000) / 1_000;
                 lblTime.setText(String.format("⏱ Còn lại: %02d:%02d:%02d", hours, minutes, seconds));
-                // Đổi màu đỏ khi còn dưới 60 giây
                 if (remaining < 60_000) {
                     lblTime.setStyle("-fx-text-fill: #e84118; -fx-font-weight: bold;");
                 }
@@ -237,7 +423,7 @@ public class ItemDetailController implements Initializable {
     // =========================================================================
     @FXML
     public void handleBackToDashboard(ActionEvent event) {
-        // Hủy listener trước khi rời màn hình — tránh memory leak
+        // Hủy listener và đồng hồ trước khi rời màn hình — tránh memory leak
         ClientSocketManager.getInstance().removeBroadcastListener(broadcastListener);
         if (countdownTimer != null) countdownTimer.stop();
 
@@ -245,7 +431,6 @@ public class ItemDetailController implements Initializable {
             new NavigationUtils().switchScene(event, "/MainDashboard.fxml", "Auction Dashboard");
         } catch (Exception e) {
             e.printStackTrace();
-            System.err.println("[DETAIL] Lỗi quay lại Dashboard");
         }
     }
 
@@ -262,7 +447,14 @@ public class ItemDetailController implements Initializable {
         lblMessage.setText(msg);
     }
 
-    // Inner class để parse payload TIME_EXTENDED
+    private void showAutoBidStatus(String msg, boolean success) {
+        lblAutoBidStatus.setStyle(success
+                ? "-fx-text-fill: #27ae60; -fx-font-style: italic;"
+                : "-fx-text-fill: #e84118; -fx-font-style: italic;");
+        lblAutoBidStatus.setText(msg);
+    }
+
+    // Inner classes để parse payload JSON
     private static class TimeExtendedPayload {
         int  itemId;
         long newEndTime;

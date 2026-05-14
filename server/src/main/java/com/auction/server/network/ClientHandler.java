@@ -150,6 +150,13 @@ public class ClientHandler implements Runnable {
             case "GET_MY_ITEMS":
                 handleGetMyItems();
                 break;
+            // ── Auto-Bidding ─────────────────────────────────────────────
+            case "AUTO_BID":
+                handleAutoBid(parts);
+                break;
+            case "CANCEL_AUTO_BID":
+                handleCancelAutoBid(parts);
+                break;
             default:
                 sendMessage("FAIL:Lệnh không hỗ trợ: " + action);
                 System.err.println("[HANDLER] Lệnh lạ: " + action);
@@ -544,6 +551,91 @@ public class ClientHandler implements Runnable {
     // =========================================================================
     // DỌN DẸP KẾT NỐI
     // =========================================================================
+
+    // =========================================================================
+    // HANDLER: AUTO_BID — Đăng ký đấu giá tự động
+    // Format: "AUTO_BID:<itemId>:<maxBid>:<increment>"
+    //
+    // Sau khi đăng ký, AuctionService.triggerAutoBids() được gọi ngay để
+    // kiểm tra xem user có thể auto-bid ngay (vì có thể người khác đang dẫn đầu).
+    // =========================================================================
+    private void handleAutoBid(String[] parts) {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        if (parts.length < 4) {
+            sendMessage("FAIL:Format: AUTO_BID:<itemId>:<maxBid>:<increment>");
+            return;
+        }
+
+        int    itemId;
+        double maxBid, increment;
+        try {
+            itemId    = Integer.parseInt(parts[1].trim());
+            maxBid    = Double.parseDouble(parts[2].trim());
+            increment = Double.parseDouble(parts[3].trim());
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:itemId, maxBid và increment phải là số hợp lệ");
+            return;
+        }
+
+        if (maxBid <= 0 || increment <= 0) {
+            sendMessage("FAIL:maxBid và increment phải lớn hơn 0");
+            return;
+        }
+
+        // Kiểm tra phiên tồn tại và đang RUNNING
+        Item item = itemDAO.getItemById(itemId);
+        if (item == null) {
+            sendMessage("FAIL:Không tìm thấy sản phẩm #" + itemId);
+            return;
+        }
+        if (item.getStatus() != Item.Status.RUNNING) {
+            sendMessage("FAIL:Phiên đấu giá không còn đang chạy (trạng thái: " + item.getStatus() + ")");
+            return;
+        }
+        if (maxBid <= item.getCurrentHighestBid()) {
+            sendMessage(String.format("FAIL:maxBid ($%.2f) phải cao hơn giá hiện tại ($%.2f)",
+                    maxBid, item.getCurrentHighestBid()));
+            return;
+        }
+
+        // Đăng ký vào AuctionService
+        auctionService.registerAutoBid(itemId, loggedInUsername, maxBid, increment);
+        sendMessage("SUCCESS:Đã đăng ký auto-bid thành công!");
+
+        // Kích hoạt ngay: nếu người khác đang dẫn đầu, user này có thể auto-bid liền
+        auctionService.triggerAutoBids(
+                itemId,
+                item.getCurrentHighestBidder(),
+                item.getCurrentHighestBid(),
+                server);
+    }
+
+    // =========================================================================
+    // HANDLER: CANCEL_AUTO_BID — Hủy đấu giá tự động
+    // Format: "CANCEL_AUTO_BID:<itemId>"
+    // =========================================================================
+    private void handleCancelAutoBid(String[] parts) {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        if (parts.length < 2) {
+            sendMessage("FAIL:Format: CANCEL_AUTO_BID:<itemId>");
+            return;
+        }
+
+        try {
+            int itemId = Integer.parseInt(parts[1].trim());
+            auctionService.cancelAutoBid(itemId, loggedInUsername);
+            sendMessage("SUCCESS:Đã hủy auto-bid cho phiên #" + itemId);
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:itemId không hợp lệ");
+        }
+    }
+
     private void closeConnections() {
         try {
             if (server != null) server.removeClient(this);
