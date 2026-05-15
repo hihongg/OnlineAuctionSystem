@@ -42,11 +42,44 @@ public class AuctionServer {
         }
     }
 
+    /**
+     * Gửi tin nhắn đến TẤT CẢ client đang kết nối.
+     * Dùng cho các thông báo hệ thống không liên quan đến item cụ thể
+     * (ví dụ: server shutdown, thông báo toàn hệ thống).
+     */
     public void broadcast(Message message) {
         String jsonMessage = message.toJson();
         for (ClientHandler client : connectedClients) {
             client.sendMessage(jsonMessage);
         }
+    }
+
+    /**
+     * Gửi tin nhắn CHỈ đến các client đang theo dõi (watch) một item cụ thể.
+     *
+     * Tại sao cần method này thay vì dùng broadcast()?
+     *   - broadcast() gửi BID_UPDATE cho mọi client dù họ không xem item đó
+     *     → lãng phí băng thông, client phải tự lọc.
+     *   - broadcastToItemWatchers() chỉ gửi đến đúng người cần nhận
+     *     → hiệu quả hơn khi có nhiều phiên đấu giá đồng thời.
+     *
+     * Client đăng ký xem bằng lệnh WATCH_ITEM:<itemId>
+     * Client hủy xem bằng lệnh UNWATCH_ITEM hoặc khi ngắt kết nối.
+     *
+     * @param itemId  ID của item cần broadcast
+     * @param message Tin nhắn cần gửi (BID_UPDATE, TIME_EXTENDED, ...)
+     */
+    public void broadcastToItemWatchers(int itemId, Message message) {
+        String jsonMessage = message.toJson();
+        int count = 0;
+        for (ClientHandler client : connectedClients) {
+            if (client.getWatchedItemId() == itemId) {
+                client.sendMessage(jsonMessage);
+                count++;
+            }
+        }
+        System.out.printf("[SERVER] Broadcast item #%d → %d watcher(s): %s%n",
+                itemId, count, message.getAction());
     }
 
     public void removeClient(ClientHandler client) {

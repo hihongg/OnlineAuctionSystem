@@ -128,7 +128,7 @@ public class AuctionService {
         if (success) {
             currentItem.setCurrentHighestBid(bidAmount);
             currentItem.setCurrentHighestBidder(username);
-            server.broadcast(new Message("BID_UPDATE", gson.toJson(currentItem)));
+            server.broadcastToItemWatchers(itemId, new Message("BID_UPDATE", gson.toJson(currentItem)));
             System.out.println("[BID] " + username + " đặt $" + bidAmount + " cho item #" + itemId);
             return true;
         }
@@ -147,10 +147,10 @@ public class AuctionService {
         // Anti-sniping
         applyAntiSniping(currentItem);
 
-        // Cập nhật giá trong object và broadcast
+        // Cập nhật giá trong object và chỉ gửi đến client đang xem item này
         currentItem.setCurrentHighestBid(bidAmount);
         currentItem.setCurrentHighestBidder(username);
-        auctionServer.broadcast(new Message("BID_UPDATE", gson.toJson(currentItem)));
+        auctionServer.broadcastToItemWatchers(itemId, new Message("BID_UPDATE", gson.toJson(currentItem)));
 
         // Kích hoạt auto-bid ngay sau khi có bid mới
         triggerAutoBids(itemId, username, bidAmount, auctionServer);
@@ -242,10 +242,10 @@ public class AuctionService {
                 if (updated == null) break;
                 applyAntiSniping(updated);
 
-                // Broadcast giá mới
+                // Broadcast giá mới chỉ đến client đang xem item này
                 updated.setCurrentHighestBid(price);
                 updated.setCurrentHighestBidder(winner);
-                auctionServer.broadcast(new Message("BID_UPDATE", gson.toJson(updated)));
+                auctionServer.broadcastToItemWatchers(itemId, new Message("BID_UPDATE", gson.toJson(updated)));
 
                 System.out.printf("[AUTO-BID] Round %d: %s đặt $%.2f cho item #%d%n",
                         round + 1, winner, price, itemId);
@@ -268,9 +268,9 @@ public class AuctionService {
             itemDAO.updateEndTime(item.getId(), newEndTime);
             item.setEndTime(newEndTime);
 
-            // Thông báo gia hạn đến tất cả client
+            // Thông báo gia hạn chỉ đến client đang xem item này
             String payload = gson.toJson(new TimeExtendedPayload(item.getId(), newEndTime));
-            server.broadcast(new Message("TIME_EXTENDED", payload));
+            server.broadcastToItemWatchers(item.getId(), new Message("TIME_EXTENDED", payload));
             System.out.println("[ANTI-SNIPING] Gia hạn +5 phút cho item #" + item.getId());
         }
     }

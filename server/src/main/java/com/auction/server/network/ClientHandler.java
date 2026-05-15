@@ -27,7 +27,13 @@ import java.util.List;
  *   │  LOGIN              │  <user>:<pass>                │  Mọi người │
  *   │  GET_ITEMS          │  (không có)                   │  Mọi người │
  *   │  GET_ITEM_BY_ID     │  <itemId>                     │  Đã login  │
+ *   │  WATCH_ITEM         │  <itemId>                     │  Đã login  │
+ *   │  UNWATCH_ITEM       │  (không có)                   │  Đã login  │
  *   │  GET_ALL_ITEMS      │  (không có)                   │  ADMIN     │
+ *   │  GET_ALL_USERS      │  (không có)                   │  ADMIN     │
+ *   │  DELETE_USER        │  <username>                   │  ADMIN     │
+ *   │  UPDATE_USER_ROLE   │  <username>:<newRole>         │  ADMIN     │
+ *   │  CHANGE_ITEM_STATUS │  <itemId>:<status>            │  ADMIN     │
  *   │  GET_MY_ITEMS       │  (không có)                   │  SELLER    │
  *   │  PLACE_BID          │  <itemId>:<amount>            │  BIDDER    │
  *   │  GET_BID_HISTORY    │  <itemId>                     │  Đã login  │
@@ -40,7 +46,8 @@ import java.util.List;
  *     "SUCCESS"            – thao tác thành công, không có dữ liệu kèm
  *     "SUCCESS:<data>"     – thành công, data là JSON hoặc chuỗi mô tả
  *     "FAIL:<lý do>"       – thao tác thất bại kèm lý do
- *     "BID_UPDATE:<json>"  – broadcast khi có bid mới
+ *     "BID_UPDATE:<json>"  – broadcast khi có bid mới (chỉ đến watcher của item đó)
+ *     "TIME_EXTENDED:<json>"– broadcast khi phiên được gia hạn (anti-sniping)
  *     "AUCTION_ENDED:<msg>"– broadcast khi phiên đấu giá kết thúc
  */
 public class ClientHandler implements Runnable {
@@ -60,6 +67,24 @@ public class ClientHandler implements Runnable {
 
     // Lưu username sau khi đăng nhập để dùng cho PLACE_BID
     private String loggedInUsername = null;
+
+    /**
+     * ID của item mà client đang theo dõi realtime (màn hình ItemDetail).
+     *
+     * - Được đặt bằng lệnh WATCH_ITEM:<itemId>
+     * - Được xóa (→ -1) bằng lệnh UNWATCH_ITEM hoặc khi client ngắt kết nối
+     * - AuctionServer.broadcastToItemWatchers() dùng field này để lọc
+     *
+     * Dùng volatile vì được đọc bởi thread khác (AuctionServer.broadcastToItemWatchers
+     * chạy trong thread của ClientHandler người đặt giá, nhưng đọc field này
+     * từ danh sách connectedClients — có thể là thread khác).
+     */
+    private volatile int watchedItemId = -1;
+
+    /** Getter cho AuctionServer.broadcastToItemWatchers() */
+    public int getWatchedItemId() {
+        return watchedItemId;
+    }
 
     public ClientHandler(Socket socket, AuctionServer server, AuctionService auctionService) {
         this.socket = socket;
@@ -128,9 +153,33 @@ public class ClientHandler implements Runnable {
                 // Lấy chi tiết 1 sản phẩm — dùng cho màn hình ItemDetail
                 handleGetItemById(parts);
                 break;
+            // ── Theo dõi realtime một phiên cụ thể ───────────────────────
+            case "WATCH_ITEM":
+                // Client mở màn hình ItemDetail → đăng ký nhận BID_UPDATE của item này
+                handleWatchItem(parts);
+                break;
+            case "UNWATCH_ITEM":
+                // Client rời màn hình ItemDetail → hủy nhận BID_UPDATE
+                watchedItemId = -1;
+                sendMessage("SUCCESS:Đã hủy theo dõi phiên đấu giá");
+                break;
             case "GET_ALL_ITEMS":
                 // Lấy toàn bộ sản phẩm mọi trạng thái — chỉ dành cho Admin
                 handleGetAllItems();
+                break;
+            // ── Admin: quản lý người dùng ────────────────────────────────
+            case "GET_ALL_USERS":
+                handleGetAllUsers();
+                break;
+            case "DELETE_USER":
+                handleDeleteUser(parts);
+                break;
+            case "UPDATE_USER_ROLE":
+                handleUpdateUserRole(parts);
+                break;
+            // ── Admin: thay đổi trạng thái phiên ────────────────────────
+            case "CHANGE_ITEM_STATUS":
+                handleChangeItemStatus(parts);
                 break;
             case "PLACE_BID":
                 handlePlaceBid(parts);
@@ -338,6 +387,179 @@ public class ClientHandler implements Runnable {
         sendMessage("SUCCESS:" + gson.toJson(allItems));
         System.out.println("[HANDLER] Admin " + loggedInUsername
                 + " lấy toàn bộ " + allItems.size() + " sản phẩm.");
+    }
+
+    // =========================================================================
+    // HANDLER: WATCH_ITEM – đăng ký nhận realtime update cho một item cụ thể
+    // Format: "WATCH_ITEM:<itemId>"
+    //
+    // Mỗi ClientHandler chỉ watch được 1 item tại một thời điểm.
+    // Gọi WATCH_ITEM với itemId khác sẽ tự động thay thế item cũ.
+    // Khi client rời màn hình detail, gọi UNWATCH_ITEM để giải phóng.
+    // =========================================================================
+    private void handleWatchItem(String[] parts) {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        if (parts.length < 2 || parts[1].trim().isEmpty()) {
+            sendMessage("FAIL:Thiếu itemId. Format: WATCH_ITEM:<itemId>");
+            return;
+        }
+        try {
+            int itemId = Integer.parseInt(parts[1].trim());
+            watchedItemId = itemId;
+            sendMessage("SUCCESS:Đang theo dõi phiên #" + itemId);
+            System.out.printf("[HANDLER] %s đăng ký watch item #%d%n",
+                    loggedInUsername, itemId);
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:itemId phải là số nguyên");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: GET_ALL_USERS – Admin lấy danh sách toàn bộ người dùng
+    // Format: "GET_ALL_USERS"
+    // Phản hồi: SUCCESS:[{"id":"1","username":"admin","email":"...","role":"ADMIN",...}, ...]
+    // =========================================================================
+    private void handleGetAllUsers() {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        String[] info = userDAO.getUserInfo(loggedInUsername);
+        if (info == null || !"ADMIN".equals(info[1])) {
+            sendMessage("FAIL:Chỉ Admin mới có quyền xem danh sách người dùng");
+            return;
+        }
+
+        List<String[]> users = userDAO.getAllUsers();
+        // Chuyển thành List<Map> để Gson serialize thành JSON object dễ đọc hơn
+        List<java.util.Map<String, String>> result = new java.util.ArrayList<>();
+        for (String[] u : users) {
+            java.util.Map<String, String> map = new java.util.LinkedHashMap<>();
+            map.put("id",         u[0]);
+            map.put("username",   u[1]);
+            map.put("email",      u[2]);
+            map.put("role",       u[3]);
+            map.put("created_at", u[4]);
+            result.add(map);
+        }
+        sendMessage("SUCCESS:" + gson.toJson(result));
+        System.out.println("[HANDLER] Admin " + loggedInUsername
+                + " lấy danh sách " + users.size() + " users.");
+    }
+
+    // =========================================================================
+    // HANDLER: DELETE_USER – Admin xóa người dùng
+    // Format: "DELETE_USER:<username>"
+    //
+    // Ràng buộc (kiểm tra trong UserDAO.deleteUser):
+    //   - Không xóa được ADMIN
+    //   - Không tự xóa chính mình
+    // =========================================================================
+    private void handleDeleteUser(String[] parts) {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        String[] info = userDAO.getUserInfo(loggedInUsername);
+        if (info == null || !"ADMIN".equals(info[1])) {
+            sendMessage("FAIL:Chỉ Admin mới có quyền xóa người dùng");
+            return;
+        }
+        if (parts.length < 2 || parts[1].trim().isEmpty()) {
+            sendMessage("FAIL:Thiếu username. Format: DELETE_USER:<username>");
+            return;
+        }
+
+        String targetUsername = parts[1].trim();
+        boolean ok = userDAO.deleteUser(targetUsername, loggedInUsername);
+        if (ok) {
+            sendMessage("SUCCESS:Đã xóa tài khoản '" + targetUsername + "'");
+        } else {
+            sendMessage("FAIL:Không thể xóa. User không tồn tại, "
+                    + "là ADMIN, hoặc bạn đang tự xóa chính mình.");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: UPDATE_USER_ROLE – Admin đổi role của người dùng
+    // Format: "UPDATE_USER_ROLE:<username>:<newRole>"
+    // newRole hợp lệ: BIDDER, SELLER (không cho phép đổi thành ADMIN)
+    // =========================================================================
+    private void handleUpdateUserRole(String[] parts) {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        String[] info = userDAO.getUserInfo(loggedInUsername);
+        if (info == null || !"ADMIN".equals(info[1])) {
+            sendMessage("FAIL:Chỉ Admin mới có quyền thay đổi role người dùng");
+            return;
+        }
+        if (parts.length < 3 || parts[1].trim().isEmpty() || parts[2].trim().isEmpty()) {
+            sendMessage("FAIL:Format: UPDATE_USER_ROLE:<username>:<newRole>");
+            return;
+        }
+
+        String targetUsername = parts[1].trim();
+        String newRole        = parts[2].trim().toUpperCase();
+
+        boolean ok = userDAO.updateUserRole(targetUsername, newRole, loggedInUsername);
+        if (ok) {
+            sendMessage("SUCCESS:Đã đổi role của '" + targetUsername + "' → " + newRole);
+        } else {
+            sendMessage("FAIL:Không thể đổi role. Kiểm tra: username tồn tại, "
+                    + "role hợp lệ (BIDDER/SELLER), không đổi role ADMIN.");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: CHANGE_ITEM_STATUS – Admin thay đổi trạng thái phiên đấu giá
+    // Format: "CHANGE_ITEM_STATUS:<itemId>:<status>"
+    // status hợp lệ: PAID, CANCELED
+    //
+    // Dùng khi:
+    //   - Xác nhận thanh toán thủ công (FINISHED → PAID)
+    //   - Hủy phiên bất thường (RUNNING/OPEN → CANCELED)
+    // =========================================================================
+    private void handleChangeItemStatus(String[] parts) {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        String[] info = userDAO.getUserInfo(loggedInUsername);
+        if (info == null || !"ADMIN".equals(info[1])) {
+            sendMessage("FAIL:Chỉ Admin mới có quyền thay đổi trạng thái phiên");
+            return;
+        }
+        if (parts.length < 3 || parts[1].trim().isEmpty() || parts[2].trim().isEmpty()) {
+            sendMessage("FAIL:Format: CHANGE_ITEM_STATUS:<itemId>:<status>");
+            return;
+        }
+
+        try {
+            int    itemId    = Integer.parseInt(parts[1].trim());
+            String statusStr = parts[2].trim().toUpperCase();
+
+            // Chỉ cho phép Admin đặt PAID hoặc CANCELED
+            if (!statusStr.equals("PAID") && !statusStr.equals("CANCELED")) {
+                sendMessage("FAIL:Status không hợp lệ. Admin chỉ được đặt: PAID, CANCELED");
+                return;
+            }
+
+            Item.Status newStatus = Item.Status.valueOf(statusStr);
+            itemDAO.updateStatus(itemId, newStatus);
+            sendMessage("SUCCESS:Đã cập nhật phiên #" + itemId + " → " + statusStr);
+            System.out.printf("[HANDLER] Admin %s đổi status item #%d → %s%n",
+                    loggedInUsername, itemId, statusStr);
+
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:itemId phải là số nguyên");
+        } catch (IllegalArgumentException e) {
+            sendMessage("FAIL:Status không hợp lệ: " + parts[2].trim());
+        }
     }
 
     // =========================================================================
@@ -637,6 +859,7 @@ public class ClientHandler implements Runnable {
     }
 
     private void closeConnections() {
+        watchedItemId = -1; // Hủy theo dõi item khi ngắt kết nối
         try {
             if (server != null) server.removeClient(this);
             if (in    != null) in.close();
