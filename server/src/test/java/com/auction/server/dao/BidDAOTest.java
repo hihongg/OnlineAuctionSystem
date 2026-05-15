@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.Timestamp;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -49,7 +48,9 @@ public class BidDAOTest {
              PreparedStatement pstmt = conn.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS)) {
 
             pstmt.setString(1, testItemName);
-            pstmt.setTimestamp(2, new Timestamp(System.currentTimeMillis() + 3_600_000));
+            // FIX: end_time là BIGINT (milliseconds) trong DB, không phải DATETIME/TIMESTAMP.
+            // Dùng setLong thay vì setTimestamp để tránh "SQL Data truncated for column 'end_time'".
+            pstmt.setLong(2, System.currentTimeMillis() + 3_600_000);
             pstmt.executeUpdate();
 
             try (ResultSet rs = pstmt.getGeneratedKeys()) {
