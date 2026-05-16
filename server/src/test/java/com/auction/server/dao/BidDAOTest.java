@@ -48,8 +48,7 @@ public class BidDAOTest {
              PreparedStatement pstmt = conn.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS)) {
 
             pstmt.setString(1, testItemName);
-            // FIX: end_time là BIGINT (milliseconds) trong DB, không phải DATETIME/TIMESTAMP.
-            // Dùng setLong thay vì setTimestamp để tránh "SQL Data truncated for column 'end_time'".
+            // end_time là BIGINT (milliseconds) — dùng setLong, không dùng setTimestamp
             pstmt.setLong(2, System.currentTimeMillis() + 3_600_000);
             pstmt.executeUpdate();
 
@@ -64,11 +63,21 @@ public class BidDAOTest {
     @AfterEach
     public void tearDown() throws Exception {
         if (testItemId > 0) {
+            // CODE QUALITY FIX: Dùng PreparedStatement thay vì nối chuỗi SQL.
+            // Nối chuỗi (... + testItemId) trong SQL là anti-pattern:
+            //   - Dễ bị SQL Injection nếu sau này đổi thành tham số String.
+            //   - Không nhất quán với phần còn lại của codebase.
             try (Connection conn = DatabaseConnection.getConnection()) {
-                conn.createStatement().executeUpdate(
-                        "DELETE FROM bid_history WHERE item_id = " + testItemId);
-                conn.createStatement().executeUpdate(
-                        "DELETE FROM items WHERE id = " + testItemId);
+                try (PreparedStatement pstmt = conn.prepareStatement(
+                        "DELETE FROM bid_history WHERE item_id = ?")) {
+                    pstmt.setInt(1, testItemId);
+                    pstmt.executeUpdate();
+                }
+                try (PreparedStatement pstmt = conn.prepareStatement(
+                        "DELETE FROM items WHERE id = ?")) {
+                    pstmt.setInt(1, testItemId);
+                    pstmt.executeUpdate();
+                }
             }
         }
     }
@@ -88,10 +97,8 @@ public class BidDAOTest {
 
     @Test
     public void testPlaceBidTransaction_giaHopLe_capNhatDBAung() {
-        // Sau khi đặt giá thành công, DB phải phản ánh giá mới
         bidDAO.placeBidTransaction(testItemId, "user_A", 750.0);
 
-        // Kiểm tra DB trực tiếp
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(
                      "SELECT current_highest_bid, highest_bidder FROM items WHERE id = ?")) {
@@ -111,7 +118,6 @@ public class BidDAOTest {
 
     @Test
     public void testPlaceBidTransaction_giaHopLe_luuVaoBidHistory() {
-        // Sau khi đặt giá thành công, lịch sử phải được lưu vào bid_history
         bidDAO.placeBidTransaction(testItemId, "user_B", 620.0);
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -136,7 +142,6 @@ public class BidDAOTest {
 
     @Test
     public void testPlaceBidTransaction_giaThapHon_traveError() {
-        // Giá hiện tại 500.0 → đặt 300.0 là không hợp lệ
         String result = bidDAO.placeBidTransaction(testItemId, "user_C", 300.0);
 
         assertTrue(result.startsWith("ERROR"),
@@ -149,7 +154,6 @@ public class BidDAOTest {
 
     @Test
     public void testPlaceBidTransaction_giaBang_traveError() {
-        // Giá hiện tại 500.0 → đặt đúng 500.0 cũng không hợp lệ (phải CAO HƠN)
         String result = bidDAO.placeBidTransaction(testItemId, "user_D", 500.0);
 
         assertTrue(result.startsWith("ERROR"),
@@ -163,12 +167,13 @@ public class BidDAOTest {
     @Test
     public void testPlaceBidTransaction_phienDaDong_traveError() throws Exception {
         // Đóng phiên đấu giá thủ công
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            conn.createStatement().executeUpdate(
-                    "UPDATE items SET status = 'FINISHED' WHERE id = " + testItemId);
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(
+                     "UPDATE items SET status = 'FINISHED' WHERE id = ?")) {
+            pstmt.setInt(1, testItemId);
+            pstmt.executeUpdate();
         }
 
-        // Cố đặt giá vào phiên đã đóng
         String result = bidDAO.placeBidTransaction(testItemId, "user_E", 800.0);
 
         assertTrue(result.startsWith("ERROR"),
@@ -181,7 +186,6 @@ public class BidDAOTest {
 
     @Test
     public void testPlaceBidTransaction_itemKhongTonTai_traveError() {
-        // Dùng ID 999999 chắc chắn không tồn tại trong DB
         String result = bidDAO.placeBidTransaction(999_999, "user_F", 100.0);
 
         assertTrue(result.startsWith("ERROR"),
@@ -189,20 +193,17 @@ public class BidDAOTest {
     }
 
     // =========================================================================
-    // TEST 6: Đặt giá lần 2 tiếp tục hợp lệ
+    // TEST 6: Đặt giá liên tiếp tăng dần hợp lệ
     // =========================================================================
 
     @Test
     public void testPlaceBidTransaction_datGiaLienTiep_tangDanHopLe() {
-        // Lần 1: 600.0 → SUCCESS
         String result1 = bidDAO.placeBidTransaction(testItemId, "user_G", 600.0);
         assertEquals("SUCCESS", result1, "Lần đặt giá 1 phải thành công");
 
-        // Lần 2: 700.0 (cao hơn 600.0) → SUCCESS
         String result2 = bidDAO.placeBidTransaction(testItemId, "user_H", 700.0);
         assertEquals("SUCCESS", result2, "Lần đặt giá 2 phải thành công");
 
-        // Lần 3: 650.0 (thấp hơn 700.0) → ERROR
         String result3 = bidDAO.placeBidTransaction(testItemId, "user_G", 650.0);
         assertTrue(result3.startsWith("ERROR"), "Lần đặt giá 3 (thấp hơn) phải thất bại");
     }

@@ -15,14 +15,6 @@ public class ItemDAO {
 
     // =========================================================================
     // 1. Lấy sản phẩm hiển thị cho Bidder (OPEN hoặc RUNNING)
-    //
-    // BUG CŨ: WHERE status = 'OPEN'
-    //   → Dữ liệu mẫu trong SQL là RUNNING, nên client luôn nhận danh sách rỗng.
-    //
-    // FIX: WHERE status IN ('OPEN', 'RUNNING')
-    //   - OPEN   = phiên vừa tạo, chưa đến giờ bắt đầu (Seller vừa đăng).
-    //   - RUNNING = đang diễn ra, Bidder có thể đặt giá.
-    //   Cả hai trạng thái đều nên hiển thị trong danh sách cho Bidder.
     // =========================================================================
     public List<Item> getActiveItems() {
         List<Item> items = new ArrayList<>();
@@ -42,7 +34,7 @@ public class ItemDAO {
     }
 
     // =========================================================================
-    // 2. Lấy TOÀN BỘ sản phẩm (Scheduler dùng để kiểm tra OPEN→RUNNING và gõ búa)
+    // 2. Lấy TOÀN BỘ sản phẩm (Admin dùng, hoặc các truy vấn cần toàn bộ)
     // =========================================================================
     public List<Item> getAllItems() {
         List<Item> items = new ArrayList<>();
@@ -57,6 +49,34 @@ public class ItemDAO {
             }
         } catch (SQLException e) {
             System.err.println("[ItemDAO] getAllItems lỗi: " + e.getMessage());
+        }
+        return items;
+    }
+
+    // =========================================================================
+    // 2b. PERFORMANCE FIX: Lấy chỉ các phiên RUNNING đã hết giờ (Scheduler gõ búa)
+    //
+    // Vấn đề cũ: refreshAuctionsStatus() gọi getAllItems() mỗi giây → lấy toàn
+    //   bộ bảng items kể cả OPEN/FINISHED/CANCELED không cần thiết.
+    //
+    // Fix: Thêm hàm này chỉ trả về RUNNING items có end_time đã qua.
+    //   Giảm số dòng DB đọc từ N (tất cả) xuống còn k (phiên sắp đóng, thường = 0).
+    // =========================================================================
+    public List<Item> getRunningItemsToClose(long nowMs) {
+        List<Item> items = new ArrayList<>();
+        String sql = "SELECT * FROM items WHERE status = 'RUNNING' AND end_time > 0 AND end_time <= ?";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setLong(1, nowMs);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    items.add(mapResultSetToItem(rs));
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("[ItemDAO] getRunningItemsToClose lỗi: " + e.getMessage());
         }
         return items;
     }
@@ -80,7 +100,7 @@ public class ItemDAO {
     }
 
     // =========================================================================
-    // 3b. Lấy item theo tên (giữ lại cho tương thích với code cũ nếu cần)
+    // 3b. Lấy item theo tên
     // =========================================================================
     public Item getItemByName(String name) {
         String sql = "SELECT * FROM items WHERE name = ?";
@@ -98,14 +118,7 @@ public class ItemDAO {
     }
 
     // =========================================================================
-    // 4a. Cập nhật bid theo itemId (ĐÚNG — dùng WHERE id = ?)
-    //
-    // BUG CŨ: placeBid(String itemName, ...) dùng WHERE name = ?
-    //   → AuctionService gọi placeBid(String.valueOf(itemId), ...) truyền "123"
-    //     vào WHERE name = ? → không tìm được row nào → update 0 dòng → luôn false.
-    //
-    // FIX: Thêm placeBidById(int itemId, ...) dùng WHERE id = ?
-    //   AuctionService và BidDAO đều dùng hàm này.
+    // 4a. Cập nhật bid theo itemId (dùng WHERE id = ?)
     // =========================================================================
     public boolean placeBidById(int itemId, double bidAmount, String username) {
         String sql = "UPDATE items SET current_highest_bid = ?, highest_bidder = ? WHERE id = ?";
@@ -124,8 +137,7 @@ public class ItemDAO {
     }
 
     // =========================================================================
-    // 4b. Giữ lại hàm cũ theo tên (tương thích với các test hoặc code khác)
-    //     Chú ý: hàm này chỉ dùng khi thực sự biết tên item.
+    // 4b. Cập nhật bid theo tên (tương thích ngược)
     // =========================================================================
     public boolean placeBid(String itemName, double bidAmount, String username) {
         String sql = "UPDATE items SET current_highest_bid = ?, highest_bidder = ? WHERE name = ?";
@@ -144,7 +156,7 @@ public class ItemDAO {
     }
 
     // =========================================================================
-    // 5a. Cập nhật trạng thái theo itemId (dùng trong Scheduler và BidDAO)
+    // 5a. Cập nhật trạng thái theo itemId
     // =========================================================================
     public void updateStatus(int itemId, Item.Status status) {
         String sql = "UPDATE items SET status = ? WHERE id = ?";
@@ -176,7 +188,7 @@ public class ItemDAO {
     }
 
     // =========================================================================
-    // 6. Cập nhật thời gian kết thúc theo itemId (Anti-sniping +5 phút)
+    // 6. Cập nhật thời gian kết thúc (Anti-sniping +5 phút)
     // =========================================================================
     public void updateEndTime(int itemId, long newEndTimeMs) {
         String sql = "UPDATE items SET end_time = ? WHERE id = ?";
@@ -192,16 +204,9 @@ public class ItemDAO {
     }
 
     // =========================================================================
-    // 7. Kích hoạt các phiên OPEN đã đến giờ start_time → chuyển thành RUNNING
-    //
-    // FIX MỚI (Bug 5): AuctionService.refreshAuctionsStatus() trước đây chỉ xử lý
-    //   RUNNING → FINISHED, không bao giờ chuyển OPEN → RUNNING.
-    //   Kết quả: Seller đăng sản phẩm mới (status=OPEN) nhưng mãi không được đấu giá.
-    //
-    // Hàm này được Scheduler gọi mỗi giây, trả về số phiên vừa được kích hoạt.
+    // 7. Kích hoạt các phiên OPEN đã đến giờ → RUNNING
     // =========================================================================
     public int activatePendingItems() {
-        // start_time là TIMESTAMP — phiên nào đã qua giờ bắt đầu thì kích hoạt
         String sql = "UPDATE items SET status = 'RUNNING' "
                 + "WHERE status = 'OPEN' AND start_time <= NOW()";
         try (Connection conn = DatabaseConnection.getConnection();
@@ -220,7 +225,6 @@ public class ItemDAO {
 
     // =========================================================================
     // 8. Thêm sản phẩm mới (Seller dùng)
-    //    Trả về id tự sinh của dòng vừa INSERT, hoặc -1 nếu thất bại.
     // =========================================================================
     public int addItem(Item item) {
         String sql = "INSERT INTO items (name, description, starting_price, current_highest_bid, "
@@ -234,7 +238,7 @@ public class ItemDAO {
             pstmt.setString(1, item.getName());
             pstmt.setString(2, item.getDescription());
             pstmt.setDouble(3, item.getStartingPrice());
-            pstmt.setDouble(4, item.getStartingPrice()); // current = starting
+            pstmt.setDouble(4, item.getStartingPrice());
             pstmt.setLong(5, item.getEndTime());
             pstmt.setInt(6, item.getSellerId());
 
@@ -251,12 +255,10 @@ public class ItemDAO {
     }
 
     // =========================================================================
-    // 9. Cập nhật thông tin sản phẩm (Seller chỉ sửa được phiên chưa RUNNING)
-    //    Trả về true nếu update thành công.
+    // 9. Cập nhật thông tin sản phẩm (chỉ khi còn OPEN)
     // =========================================================================
     public boolean updateItem(int itemId, String name, String description,
                               double startingPrice, long endTime) {
-        // Chỉ cho phép sửa khi phiên còn OPEN (chưa bắt đầu đấu giá)
         String sql = "UPDATE items SET name=?, description=?, starting_price=?, end_time=? "
                 + "WHERE id=? AND status='OPEN'";
 
@@ -277,8 +279,7 @@ public class ItemDAO {
     }
 
     // =========================================================================
-    // 10. Xóa sản phẩm (Admin hoặc Seller xóa phiên chưa RUNNING)
-    //     Cascade sẽ tự xóa bid_history liên quan (nhờ ON DELETE CASCADE).
+    // 10. Xóa sản phẩm (chỉ khi OPEN/FINISHED/CANCELED)
     // =========================================================================
     public boolean deleteItem(int itemId) {
         String sql = "DELETE FROM items WHERE id=? AND status IN ('OPEN', 'FINISHED', 'CANCELED')";
@@ -295,7 +296,7 @@ public class ItemDAO {
     }
 
     // =========================================================================
-    // 11. Lấy danh sách sản phẩm theo Seller (Seller quản lý sản phẩm của mình)
+    // 11. Lấy danh sách sản phẩm theo Seller
     // =========================================================================
     public List<Item> getItemsBySeller(int sellerId) {
         List<Item> items = new ArrayList<>();
@@ -316,17 +317,6 @@ public class ItemDAO {
 
     // =========================================================================
     // HELPER — đọc một dòng ResultSet thành object Item
-    //
-    // BUG CŨ 1 (đã sửa): rs.getTimestamp("end_time") trên cột BIGINT
-    //   → JDBC đọc BIGINT dưới dạng giây (Unix epoch), không phải milliseconds.
-    //   → Ví dụ: end_time lưu 1_716_000_000_000 ms, getTimestamp() trả Timestamp
-    //     tương ứng với năm ~56000 → hoàn toàn sai.
-    //   FIX: rs.getLong("end_time") — lấy thẳng số milliseconds đúng như DB lưu.
-    //
-    // BUG CŨ 2 (đã sửa): if (currentHighestBid > startingPrice)
-    //   → Khi bid đầu tiên đúng bằng startingPrice, điều kiện false
-    //     → item.setCurrentHighestBidder("Chưa có") dù thực tế đã có người đặt giá.
-    //   FIX: Luôn lấy giá từ DB; chỉ fallback về startingPrice khi DB trả về 0.
     // =========================================================================
     private Item mapResultSetToItem(ResultSet rs) throws SQLException {
         int id            = rs.getInt("id");
@@ -335,20 +325,15 @@ public class ItemDAO {
 
         Item item = new Item(id, name, startPrice);
 
-        // --- Giá hiện tại ---
-        // FIX Bug cũ 2: dùng > 0 thay vì > startingPrice
         double currentBid = rs.getDouble("current_highest_bid");
         if (currentBid > 0) {
             item.setCurrentHighestBid(currentBid);
             String bidder = rs.getString("highest_bidder");
             item.setCurrentHighestBidder(bidder != null && !bidder.isBlank() ? bidder : "Chưa có");
         }
-        // else: constructor đã gán currentHighestBid = startingPrice, "Chưa có"
 
-        // --- Description ---
         item.setDescription(rs.getString("description"));
 
-        // --- Status ---
         String statusStr = rs.getString("status");
         if (statusStr != null) {
             try {
@@ -358,11 +343,9 @@ public class ItemDAO {
             }
         }
 
-        // --- End time: FIX Bug cũ 1 — cột BIGINT lưu milliseconds, dùng getLong ---
         long endTime = rs.getLong("end_time");
-        item.setEndTime(endTime);   // 0 = không có hạn chót
+        item.setEndTime(endTime);
 
-        // --- Seller ---
         item.setSellerId(rs.getInt("seller_id"));
 
         return item;

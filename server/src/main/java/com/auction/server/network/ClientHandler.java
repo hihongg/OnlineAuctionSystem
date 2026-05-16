@@ -153,24 +153,18 @@ public class ClientHandler implements Runnable {
                 handleGetItems();
                 break;
             case "GET_ITEM_BY_ID":
-                // Lấy chi tiết 1 sản phẩm — dùng cho màn hình ItemDetail
                 handleGetItemById(parts);
                 break;
-            // ── Theo dõi realtime một phiên cụ thể ───────────────────────
             case "WATCH_ITEM":
-                // Client mở màn hình ItemDetail → đăng ký nhận BID_UPDATE của item này
                 handleWatchItem(parts);
                 break;
             case "UNWATCH_ITEM":
-                // Client rời màn hình ItemDetail → hủy nhận BID_UPDATE
                 watchedItemId = -1;
                 sendMessage("SUCCESS:Đã hủy theo dõi phiên đấu giá");
                 break;
             case "GET_ALL_ITEMS":
-                // Lấy toàn bộ sản phẩm mọi trạng thái — chỉ dành cho Admin
                 handleGetAllItems();
                 break;
-            // ── Admin: quản lý người dùng ────────────────────────────────
             case "GET_ALL_USERS":
                 handleGetAllUsers();
                 break;
@@ -180,7 +174,6 @@ public class ClientHandler implements Runnable {
             case "UPDATE_USER_ROLE":
                 handleUpdateUserRole(parts);
                 break;
-            // ── Admin: thay đổi trạng thái phiên ────────────────────────
             case "CHANGE_ITEM_STATUS":
                 handleChangeItemStatus(parts);
                 break;
@@ -202,7 +195,6 @@ public class ClientHandler implements Runnable {
             case "GET_MY_ITEMS":
                 handleGetMyItems();
                 break;
-            // ── Auto-Bidding ─────────────────────────────────────────────
             case "AUTO_BID":
                 handleAutoBid(parts);
                 break;
@@ -216,12 +208,11 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // XỬ LÝ JSON MESSAGE (dùng cho broadcast ngược lại hoặc mở rộng sau)
+    // XỬ LÝ JSON MESSAGE
     // =========================================================================
     private void handleJsonMessage(Message msg) {
         switch (msg.getAction().toUpperCase()) {
             case "PLACE_BID":
-                // Payload JSON: {"itemId":1,"bidAmount":200.0}
                 PlaceBidPayload payload = gson.fromJson(msg.getPayload(), PlaceBidPayload.class);
                 processPlaceBid(payload.itemId, payload.bidAmount);
                 break;
@@ -235,10 +226,6 @@ public class ClientHandler implements Runnable {
 
     // =========================================================================
     // HANDLER: REGISTER
-    // Format ngắn : "REGISTER:<username>:<password>"           → role = BIDDER
-    // Format đầy đủ: "REGISTER:<username>:<password>:<role>"  → BIDDER hoặc SELLER
-    //
-    // LƯU Ý: Admin KHÔNG thể tự đăng ký — chỉ được tạo thủ công trong DB.
     // =========================================================================
     private void handleRegister(String[] parts) {
         if (parts.length < 3) {
@@ -249,7 +236,6 @@ public class ClientHandler implements Runnable {
         String username = parts[1].trim();
         String password = parts[2].trim();
 
-        // --- Validate username & password ---
         if (username.isEmpty() || password.isEmpty()) {
             sendMessage("FAIL:Username và password không được để trống");
             return;
@@ -263,29 +249,24 @@ public class ClientHandler implements Runnable {
             return;
         }
 
-        // --- Xác định role (parts[3] nếu có, mặc định BIDDER) ---
-        // split(":", 4) cho tối đa 4 phần → parts[3] là role nếu client gửi
         String role = "BIDDER";
         if (parts.length >= 4 && !parts[3].trim().isEmpty()) {
             role = parts[3].trim().toUpperCase();
         }
 
-        // Chỉ cho phép BIDDER hoặc SELLER tự đăng ký; ADMIN phải tạo thủ công
         if (!role.equals("BIDDER") && !role.equals("SELLER")) {
             sendMessage("FAIL:Role không hợp lệ. Chỉ chấp nhận BIDDER hoặc SELLER");
             return;
         }
 
-        // --- Ghi vào DB ---
-        // Email tạm = username@auction.local (client hiện tại chưa gửi email riêng)
         String email = username + "@auction.local";
         boolean success = userDAO.registerUser(username, password, email, role);
 
         if (success) {
-            loggedInUsername = username; // Tự động đăng nhập ngay sau đăng ký
-            loggedInRole     = role;     // FIX: cache role để không phải query DB mỗi lệnh
+            loggedInUsername = username;
+            loggedInRole     = role;
             System.out.println("[HANDLER] Đăng ký thành công: " + username + " (" + role + ")");
-            sendMessage("SUCCESS:" + role); // Trả role về để client hiển thị đúng giao diện
+            sendMessage("SUCCESS:" + role);
         } else {
             sendMessage("FAIL:Username đã tồn tại hoặc lỗi server");
         }
@@ -293,7 +274,6 @@ public class ClientHandler implements Runnable {
 
     // =========================================================================
     // HANDLER: LOGIN
-    // Format: "LOGIN:<username>:<password>"
     // =========================================================================
     private void handleLogin(String[] parts) {
         if (parts.length < 3) {
@@ -310,19 +290,17 @@ public class ClientHandler implements Runnable {
             String role = (userInfo != null) ? userInfo[1] : "BIDDER";
 
             loggedInUsername = username;
-            loggedInRole     = role; // FIX: cache role để không phải query DB mỗi lệnh
+            loggedInRole     = role;
 
             System.out.println("[HANDLER] Đăng nhập thành công: " + username + " (" + role + ")");
-            sendMessage("SUCCESS:" + role); // Ví dụ: "SUCCESS:BIDDER"
+            sendMessage("SUCCESS:" + role);
         } else {
             sendMessage("FAIL:Sai username hoặc password");
         }
     }
 
     // =========================================================================
-    // HANDLER: GET_ITEMS – danh sách sản phẩm đang RUNNING (dành cho Bidder)
-    // Format: "GET_ITEMS"
-    // Ai gọi được: mọi client (kể cả chưa đăng nhập — trang chủ hiển thị list)
+    // HANDLER: GET_ITEMS
     // =========================================================================
     private void handleGetItems() {
         List<Item> items = itemDAO.getActiveItems();
@@ -332,14 +310,7 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // HANDLER: GET_ITEM_BY_ID – chi tiết 1 sản phẩm (dành cho màn hình detail)
-    // Format: "GET_ITEM_BY_ID:<itemId>"
-    // Ai gọi được: bất kỳ client đã đăng nhập
-    //
-    // Tại sao cần lệnh này thay vì dùng GET_ITEMS?
-    //   GET_ITEMS chỉ trả RUNNING items — sau khi phiên FINISHED,
-    //   Bidder vẫn cần xem kết quả (người thắng, giá cuối).
-    //   GET_ITEM_BY_ID trả item bất kể trạng thái.
+    // HANDLER: GET_ITEM_BY_ID
     // =========================================================================
     private void handleGetItemById(String[] parts) {
         if (loggedInUsername == null) {
@@ -367,20 +338,13 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // HANDLER: GET_ALL_ITEMS – toàn bộ sản phẩm mọi trạng thái (chỉ Admin)
-    // Format: "GET_ALL_ITEMS"
-    // Ai gọi được: ADMIN
-    //
-    // Trả về list gồm tất cả status: OPEN, RUNNING, FINISHED, PAID, CANCELED
-    // → Admin dùng để quản lý, thống kê, hoặc can thiệp thủ công.
+    // HANDLER: GET_ALL_ITEMS (Admin only)
     // =========================================================================
     private void handleGetAllItems() {
         if (loggedInUsername == null) {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-
-        // FIX: dùng loggedInRole đã cache — không cần query DB thêm
         if (!"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Admin mới có quyền xem toàn bộ danh sách sản phẩm");
             return;
@@ -393,12 +357,7 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // HANDLER: WATCH_ITEM – đăng ký nhận realtime update cho một item cụ thể
-    // Format: "WATCH_ITEM:<itemId>"
-    //
-    // Mỗi ClientHandler chỉ watch được 1 item tại một thời điểm.
-    // Gọi WATCH_ITEM với itemId khác sẽ tự động thay thế item cũ.
-    // Khi client rời màn hình detail, gọi UNWATCH_ITEM để giải phóng.
+    // HANDLER: WATCH_ITEM
     // =========================================================================
     private void handleWatchItem(String[] parts) {
         if (loggedInUsername == null) {
@@ -413,31 +372,26 @@ public class ClientHandler implements Runnable {
             int itemId = Integer.parseInt(parts[1].trim());
             watchedItemId = itemId;
             sendMessage("SUCCESS:Đang theo dõi phiên #" + itemId);
-            System.out.printf("[HANDLER] %s đăng ký watch item #%d%n",
-                    loggedInUsername, itemId);
+            System.out.printf("[HANDLER] %s đăng ký watch item #%d%n", loggedInUsername, itemId);
         } catch (NumberFormatException e) {
             sendMessage("FAIL:itemId phải là số nguyên");
         }
     }
 
     // =========================================================================
-    // HANDLER: GET_ALL_USERS – Admin lấy danh sách toàn bộ người dùng
-    // Format: "GET_ALL_USERS"
-    // Phản hồi: SUCCESS:[{"id":"1","username":"admin","email":"...","role":"ADMIN",...}, ...]
+    // HANDLER: GET_ALL_USERS (Admin only)
     // =========================================================================
     private void handleGetAllUsers() {
         if (loggedInUsername == null) {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        // FIX: dùng loggedInRole đã cache
         if (!"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Admin mới có quyền xem danh sách người dùng");
             return;
         }
 
         List<String[]> users = userDAO.getAllUsers();
-        // Chuyển thành List<Map> để Gson serialize thành JSON object dễ đọc hơn
         List<java.util.Map<String, String>> result = new java.util.ArrayList<>();
         for (String[] u : users) {
             java.util.Map<String, String> map = new java.util.LinkedHashMap<>();
@@ -454,19 +408,13 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // HANDLER: DELETE_USER – Admin xóa người dùng
-    // Format: "DELETE_USER:<username>"
-    //
-    // Ràng buộc (kiểm tra trong UserDAO.deleteUser):
-    //   - Không xóa được ADMIN
-    //   - Không tự xóa chính mình
+    // HANDLER: DELETE_USER (Admin only)
     // =========================================================================
     private void handleDeleteUser(String[] parts) {
         if (loggedInUsername == null) {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        // FIX: dùng loggedInRole đã cache
         if (!"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Admin mới có quyền xóa người dùng");
             return;
@@ -487,16 +435,13 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // HANDLER: UPDATE_USER_ROLE – Admin đổi role của người dùng
-    // Format: "UPDATE_USER_ROLE:<username>:<newRole>"
-    // newRole hợp lệ: BIDDER, SELLER (không cho phép đổi thành ADMIN)
+    // HANDLER: UPDATE_USER_ROLE (Admin only)
     // =========================================================================
     private void handleUpdateUserRole(String[] parts) {
         if (loggedInUsername == null) {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        // FIX: dùng loggedInRole đã cache
         if (!"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Admin mới có quyền thay đổi role người dùng");
             return;
@@ -519,20 +464,13 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // HANDLER: CHANGE_ITEM_STATUS – Admin thay đổi trạng thái phiên đấu giá
-    // Format: "CHANGE_ITEM_STATUS:<itemId>:<status>"
-    // status hợp lệ: PAID, CANCELED
-    //
-    // Dùng khi:
-    //   - Xác nhận thanh toán thủ công (FINISHED → PAID)
-    //   - Hủy phiên bất thường (RUNNING/OPEN → CANCELED)
+    // HANDLER: CHANGE_ITEM_STATUS (Admin only)
     // =========================================================================
     private void handleChangeItemStatus(String[] parts) {
         if (loggedInUsername == null) {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        // FIX: dùng loggedInRole đã cache
         if (!"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Admin mới có quyền thay đổi trạng thái phiên");
             return;
@@ -546,7 +484,6 @@ public class ClientHandler implements Runnable {
             int    itemId    = Integer.parseInt(parts[1].trim());
             String statusStr = parts[2].trim().toUpperCase();
 
-            // Chỉ cho phép Admin đặt PAID hoặc CANCELED
             if (!statusStr.equals("PAID") && !statusStr.equals("CANCELED")) {
                 sendMessage("FAIL:Status không hợp lệ. Admin chỉ được đặt: PAID, CANCELED");
                 return;
@@ -566,8 +503,7 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // HANDLER: PLACE_BID (plain text)
-    // Format: "PLACE_BID:<itemId>:<bidAmount>"
+    // HANDLER: PLACE_BID
     // =========================================================================
     private void handlePlaceBid(String[] parts) {
         if (loggedInUsername == null) {
@@ -580,7 +516,7 @@ public class ClientHandler implements Runnable {
         }
 
         try {
-            int itemId      = Integer.parseInt(parts[1].trim());
+            int itemId       = Integer.parseInt(parts[1].trim());
             double bidAmount = Double.parseDouble(parts[2].trim());
             processPlaceBid(itemId, bidAmount);
         } catch (NumberFormatException e) {
@@ -588,26 +524,13 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    /**
-     * Logic đặt giá dùng chung cho cả plain-text và JSON handler.
-     *
-     * Luồng xử lý:
-     *   1. BidDAO.placeBidTransaction() – kiểm tra giá, khóa DB (FOR UPDATE),
-     *      lưu bid_history, cập nhật items — tất cả trong 1 Transaction.
-     *   2. Nếu thành công → AuctionService xử lý anti-sniping + broadcast
-     *      cho tất cả client đang kết nối.
-     */
     private void processPlaceBid(int itemId, double bidAmount) {
-
-        // Bước 1: Giao dịch DB an toàn (Transaction + Pessimistic Lock)
         String result = bidDAO.placeBidTransaction(itemId, loggedInUsername, bidAmount);
 
         if ("SUCCESS".equals(result)) {
-            // Bước 2: Anti-sniping + broadcast realtime cho mọi client
             try {
                 auctionService.handlePostBidSuccess(itemId, loggedInUsername, bidAmount, server);
             } catch (Exception e) {
-                // Broadcast lỗi không làm hỏng kết quả đặt giá — chỉ log
                 System.err.println("[HANDLER] Lỗi broadcast sau bid: " + e.getMessage());
             }
 
@@ -615,7 +538,6 @@ public class ClientHandler implements Runnable {
             System.out.println("[HANDLER] " + loggedInUsername
                     + " đặt $" + bidAmount + " cho item #" + itemId);
         } else {
-            // result là chuỗi "ERROR: ..." từ BidDAO
             sendMessage("FAIL:" + result.replace("ERROR: ", ""));
             System.err.println("[HANDLER] Đặt giá thất bại: " + result);
         }
@@ -631,8 +553,7 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // HANDLER: GET_BID_HISTORY – lịch sử đặt giá dùng cho biểu đồ realtime
-    // Format: "GET_BID_HISTORY:<itemId>"
+    // HANDLER: GET_BID_HISTORY
     // =========================================================================
     private void handleGetBidHistory(String[] parts) {
         if (parts.length < 2) {
@@ -649,15 +570,13 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // HANDLER: ADD_ITEM – Seller thêm sản phẩm mới
-    // Format: "ADD_ITEM:<name>:<description>:<startingPrice>:<endTimeMs>"
+    // HANDLER: ADD_ITEM
     // =========================================================================
     private void handleAddItem(String[] parts) {
         if (loggedInUsername == null) {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        // FIX: dùng loggedInRole đã cache
         if (!"SELLER".equals(loggedInRole) && !"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Seller hoặc Admin mới được thêm sản phẩm");
             return;
@@ -667,11 +586,11 @@ public class ClientHandler implements Runnable {
             return;
         }
         try {
-            String name         = parts[1].trim();
-            String description  = parts[2].trim();
-            double startPrice   = Double.parseDouble(parts[3].trim());
-            long   endTime      = Long.parseLong(parts[4].trim());
-            int    sellerId     = userDAO.getUserIdByUsername(loggedInUsername);
+            String name        = parts[1].trim();
+            String description = parts[2].trim();
+            double startPrice  = Double.parseDouble(parts[3].trim());
+            long   endTime     = Long.parseLong(parts[4].trim());
+            int    sellerId    = userDAO.getUserIdByUsername(loggedInUsername);
 
             Item newItem = new Item(name, description, startPrice, endTime, sellerId);
             int newId = itemDAO.addItem(newItem);
@@ -688,15 +607,14 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // HANDLER: UPDATE_ITEM – Seller sửa thông tin sản phẩm (chỉ khi còn OPEN)
-    // Format: "UPDATE_ITEM:<itemId>:<name>:<description>:<startingPrice>:<endTimeMs>"
+    // HANDLER: UPDATE_ITEM
+    // SECURITY FIX: Seller chỉ được sửa item của chính mình.
     // =========================================================================
     private void handleUpdateItem(String[] parts) {
         if (loggedInUsername == null) {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        // FIX: dùng loggedInRole đã cache
         if (!"SELLER".equals(loggedInRole) && !"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Seller hoặc Admin mới được sửa sản phẩm");
             return;
@@ -712,6 +630,21 @@ public class ClientHandler implements Runnable {
             double startPrice  = Double.parseDouble(parts[4].trim());
             long   endTime     = Long.parseLong(parts[5].trim());
 
+            // SECURITY FIX: Seller chỉ được sửa item của chính mình.
+            // Admin được sửa bất kỳ item nào.
+            if ("SELLER".equals(loggedInRole)) {
+                Item target = itemDAO.getItemById(itemId);
+                if (target == null) {
+                    sendMessage("FAIL:Sản phẩm #" + itemId + " không tồn tại.");
+                    return;
+                }
+                int myId = userDAO.getUserIdByUsername(loggedInUsername);
+                if (target.getSellerId() != myId) {
+                    sendMessage("FAIL:Bạn không có quyền sửa sản phẩm của người khác.");
+                    return;
+                }
+            }
+
             boolean ok = itemDAO.updateItem(itemId, name, description, startPrice, endTime);
             if (ok) {
                 sendMessage("SUCCESS:Đã cập nhật sản phẩm #" + itemId);
@@ -724,15 +657,14 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // HANDLER: DELETE_ITEM – xóa sản phẩm (chỉ khi OPEN/FINISHED/CANCELED)
-    // Format: "DELETE_ITEM:<itemId>"
+    // HANDLER: DELETE_ITEM
+    // SECURITY FIX: Seller chỉ được xóa item của chính mình.
     // =========================================================================
     private void handleDeleteItem(String[] parts) {
         if (loggedInUsername == null) {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        // FIX: dùng loggedInRole đã cache
         if (!"SELLER".equals(loggedInRole) && !"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Seller hoặc Admin mới được xóa sản phẩm");
             return;
@@ -743,6 +675,22 @@ public class ClientHandler implements Runnable {
         }
         try {
             int itemId = Integer.parseInt(parts[1].trim());
+
+            // SECURITY FIX: Seller chỉ được xóa item của chính mình.
+            // Admin được xóa bất kỳ item nào.
+            if ("SELLER".equals(loggedInRole)) {
+                Item target = itemDAO.getItemById(itemId);
+                if (target == null) {
+                    sendMessage("FAIL:Sản phẩm #" + itemId + " không tồn tại.");
+                    return;
+                }
+                int myId = userDAO.getUserIdByUsername(loggedInUsername);
+                if (target.getSellerId() != myId) {
+                    sendMessage("FAIL:Bạn không có quyền xóa sản phẩm của người khác.");
+                    return;
+                }
+            }
+
             boolean ok = itemDAO.deleteItem(itemId);
             if (ok) {
                 sendMessage("SUCCESS:Đã xóa sản phẩm #" + itemId);
@@ -755,8 +703,7 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // HANDLER: GET_MY_ITEMS – Seller xem danh sách sản phẩm của mình
-    // Format: "GET_MY_ITEMS"
+    // HANDLER: GET_MY_ITEMS
     // =========================================================================
     private void handleGetMyItems() {
         if (loggedInUsername == null) {
@@ -773,15 +720,7 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // DỌN DẸP KẾT NỐI
-    // =========================================================================
-
-    // =========================================================================
-    // HANDLER: AUTO_BID — Đăng ký đấu giá tự động
-    // Format: "AUTO_BID:<itemId>:<maxBid>:<increment>"
-    //
-    // Sau khi đăng ký, AuctionService.triggerAutoBids() được gọi ngay để
-    // kiểm tra xem user có thể auto-bid ngay (vì có thể người khác đang dẫn đầu).
+    // HANDLER: AUTO_BID
     // =========================================================================
     private void handleAutoBid(String[] parts) {
         if (loggedInUsername == null) {
@@ -809,7 +748,6 @@ public class ClientHandler implements Runnable {
             return;
         }
 
-        // Kiểm tra phiên tồn tại và đang RUNNING
         Item item = itemDAO.getItemById(itemId);
         if (item == null) {
             sendMessage("FAIL:Không tìm thấy sản phẩm #" + itemId);
@@ -825,11 +763,9 @@ public class ClientHandler implements Runnable {
             return;
         }
 
-        // Đăng ký vào AuctionService
         auctionService.registerAutoBid(itemId, loggedInUsername, maxBid, increment);
         sendMessage("SUCCESS:Đã đăng ký auto-bid thành công!");
 
-        // Kích hoạt ngay: nếu người khác đang dẫn đầu, user này có thể auto-bid liền
         auctionService.triggerAutoBids(
                 itemId,
                 item.getCurrentHighestBidder(),
@@ -838,8 +774,7 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
-    // HANDLER: CANCEL_AUTO_BID — Hủy đấu giá tự động
-    // Format: "CANCEL_AUTO_BID:<itemId>"
+    // HANDLER: CANCEL_AUTO_BID
     // =========================================================================
     private void handleCancelAutoBid(String[] parts) {
         if (loggedInUsername == null) {
@@ -861,20 +796,17 @@ public class ClientHandler implements Runnable {
     }
 
     private void closeConnections() {
-        watchedItemId = -1; // Hủy theo dõi item khi ngắt kết nối
+        watchedItemId = -1;
         try {
             if (server != null) server.removeClient(this);
-            if (in    != null) in.close();
-            if (out   != null) out.close();
+            if (in     != null) in.close();
+            if (out    != null) out.close();
             if (socket != null) socket.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    // =========================================================================
-    // Inner class – dùng để deserialize payload JSON của PLACE_BID
-    // =========================================================================
     private static class PlaceBidPayload {
         int    itemId;
         double bidAmount;
