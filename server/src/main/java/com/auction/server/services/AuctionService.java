@@ -31,6 +31,38 @@ public class AuctionService {
     // =========================================================================
     private final Map<Integer, List<AutoBidEntry>> autoBids = new ConcurrentHashMap<>();
 
+    // =========================================================================
+    // PER-ITEM LOCK MAP — FIX CHO 2 VẤN ĐỀ ĐỒNG THỜI
+    //
+    // VẤN ĐỀ CŨ 1 (triggerAutoBids):
+    //   triggerAutoBids() dùng synchronized(this) → toàn bộ class bị khóa
+    //   trong khi gọi bidDAO.placeBidTransaction() (I/O tới MySQL, ~50-200ms).
+    //   Hậu quả: registerAutoBid() và cancelAutoBid() của MỌI item đều bị block,
+    //   dù chúng không liên quan đến item đang xử lý.
+    //
+    // VẤN ĐỀ CŨ 2 (applyAntiSniping):
+    //   applyAntiSniping() không synchronized → race condition:
+    //   2 bid đến cùng lúc đều thấy remaining < 60s, cả 2 gọi updateEndTime()
+    //   → gia hạn 2 lần (10 phút) thay vì 1 lần (5 phút).
+    //
+    // GIẢI PHÁP: Per-item lock thay vì lock toàn class.
+    //   - Mỗi itemId có 1 Object lock riêng.
+    //   - Item A và Item B có thể xử lý auto-bid SONG SONG.
+    //   - Chỉ 2 thread cùng thao tác trên CÙNG 1 item mới phải chờ nhau.
+    //   - Lock chỉ giữ trong thời gian đọc/sửa danh sách (microseconds),
+    //     KHÔNG giữ trong khi gọi DB.
+    // =========================================================================
+    private final ConcurrentHashMap<Integer, Object> itemLocks = new ConcurrentHashMap<>();
+
+    /**
+     * Trả về lock object cho một itemId cụ thể.
+     * computeIfAbsent đảm bảo mỗi itemId chỉ có đúng 1 lock object,
+     * dù nhiều thread gọi cùng lúc.
+     */
+    private Object getLock(int itemId) {
+        return itemLocks.computeIfAbsent(itemId, k -> new Object());
+    }
+
     public AuctionService(AuctionServer server) {
         this.itemDAO = new ItemDAO();
         this.bidDAO  = new BidDAO();
@@ -59,28 +91,30 @@ public class AuctionService {
         List<Item> expiredItems = itemDAO.getRunningItemsToClose(now);
 
         for (Item item : expiredItems) {
-            // Các item từ getRunningItemsToClose() đều đã RUNNING + end_time <= now
-            synchronized (this) {
+            // Dùng per-item lock thay vì synchronized(this):
+            // Scheduler chỉ cần khóa item đang đóng, không ảnh hưởng item khác.
+            synchronized (getLock(item.getId())) {
                 Item fresh = itemDAO.getItemById(item.getId());
                 if (fresh == null || fresh.getStatus() != Item.Status.RUNNING) continue;
 
                 itemDAO.updateStatus(item.getId(), Item.Status.FINISHED);
 
-                // Dọn auto-bids của phiên đã kết thúc (giải phóng bộ nhớ)
+                // Dọn auto-bids và lock của phiên đã kết thúc (giải phóng bộ nhớ)
                 autoBids.remove(item.getId());
+                itemLocks.remove(item.getId());
 
-                String winner     = item.getCurrentHighestBidder();
+                String winner     = fresh.getCurrentHighestBidder();
                 boolean hasWinner = winner != null && !winner.equals("Chưa có");
 
-                String endMsg = "Phiên #" + item.getId()
-                        + " (" + item.getName() + ") đã kết thúc!\n"
+                String endMsg = "Phiên #" + fresh.getId()
+                        + " (" + fresh.getName() + ") đã kết thúc!\n"
                         + (hasWinner
-                        ? "Người thắng: " + winner + " | Giá: $" + item.getCurrentHighestBid()
+                        ? "Người thắng: " + winner + " | Giá: $" + fresh.getCurrentHighestBid()
                         : "Không có người tham gia.");
 
                 server.broadcast(new Message("AUCTION_ENDED", endMsg));
-                System.out.println("--- GÕ BÚA! " + item.getName()
-                        + (hasWinner ? " | Winner: " + winner + " | $" + item.getCurrentHighestBid()
+                System.out.println("--- GÕ BÚA! " + fresh.getName()
+                        + (hasWinner ? " | Winner: " + winner + " | $" + fresh.getCurrentHighestBid()
                         : " | Không ai đặt giá") + " ---");
             }
         }
@@ -106,7 +140,7 @@ public class AuctionService {
         Item currentItem = itemDAO.getItemById(itemId);
         if (currentItem == null) return;
 
-        // Anti-sniping
+        // Anti-sniping (đã có per-item lock bên trong)
         applyAntiSniping(currentItem);
 
         currentItem.setCurrentHighestBid(bidAmount);
@@ -119,77 +153,113 @@ public class AuctionService {
 
     // =========================================================================
     // AUTO-BIDDING — Đăng ký
+    //
+    // FIX: Dùng synchronized(getLock(itemId)) thay vì synchronized(this).
+    // Lý do: chỉ cần bảo vệ thao tác trên danh sách của itemId này,
+    // không cần khóa cả class khi đăng ký cho item khác.
     // =========================================================================
-    public synchronized void registerAutoBid(int itemId, String username,
-                                             double maxBid, double increment) {
-        List<AutoBidEntry> list = autoBids.computeIfAbsent(itemId, k -> new ArrayList<>());
+    public void registerAutoBid(int itemId, String username,
+                                double maxBid, double increment) {
+        synchronized (getLock(itemId)) {
+            List<AutoBidEntry> list = autoBids.computeIfAbsent(itemId, k -> new ArrayList<>());
 
-        list.removeIf(e -> e.username.equals(username));
-        list.add(new AutoBidEntry(username, maxBid, increment));
-        list.sort(Comparator.comparingLong(e -> e.registeredAt));
+            list.removeIf(e -> e.username.equals(username));
+            list.add(new AutoBidEntry(username, maxBid, increment));
+            list.sort(Comparator.comparingLong(e -> e.registeredAt));
 
-        System.out.printf("[AUTO-BID] Đăng ký: %s | item #%d | max=$%.2f | inc=$%.2f%n",
-                username, itemId, maxBid, increment);
+            System.out.printf("[AUTO-BID] Đăng ký: %s | item #%d | max=$%.2f | inc=$%.2f%n",
+                    username, itemId, maxBid, increment);
+        }
     }
 
     // =========================================================================
     // AUTO-BIDDING — Hủy đăng ký
     // =========================================================================
-    public synchronized void cancelAutoBid(int itemId, String username) {
-        List<AutoBidEntry> list = autoBids.get(itemId);
-        if (list != null) {
-            boolean removed = list.removeIf(e -> e.username.equals(username));
-            if (removed) {
-                System.out.printf("[AUTO-BID] Đã hủy: %s | item #%d%n", username, itemId);
+    public void cancelAutoBid(int itemId, String username) {
+        synchronized (getLock(itemId)) {
+            List<AutoBidEntry> list = autoBids.get(itemId);
+            if (list != null) {
+                boolean removed = list.removeIf(e -> e.username.equals(username));
+                if (removed) {
+                    System.out.printf("[AUTO-BID] Đã hủy: %s | item #%d%n", username, itemId);
+                }
             }
         }
     }
 
     // =========================================================================
     // AUTO-BIDDING — Kích hoạt vòng lặp đấu giá tự động
+    //
+    // FIX QUAN TRỌNG: Tách "đọc danh sách" (cần lock) ra khỏi "gọi DB" (không cần lock).
+    //
+    // Logic từng vòng:
+    //   Bước 1 — Trong lock: snapshot danh sách, tìm candidate tiếp theo.
+    //             Lock giữ ngắn (chỉ duyệt ArrayList trong RAM, microseconds).
+    //   Bước 2 — Ngoài lock: gọi bidDAO.placeBidTransaction() (I/O MySQL).
+    //             Các thread khác có thể registerAutoBid/cancelAutoBid trong thời gian này.
+    //   Bước 3 — Ngoài lock: broadcast kết quả, applyAntiSniping.
+    //
+    // Tại sao an toàn dù không giữ lock trong Bước 2?
+    //   BidDAO.placeBidTransaction() đã có Pessimistic Lock (SELECT FOR UPDATE)
+    //   ở tầng DB → chỉ 1 bid thắng dù nhiều thread cùng cố ghi.
+    //   Nếu DB từ chối bid (giá thấp hơn), vòng lặp kết thúc tự nhiên.
     // =========================================================================
     private static final int MAX_AUTO_ROUNDS = 50;
 
-    public synchronized void triggerAutoBids(int itemId, String currentWinner,
-                                             double currentBid, AuctionServer auctionServer) {
-        List<AutoBidEntry> list = autoBids.get(itemId);
-        if (list == null || list.isEmpty()) return;
-
+    public void triggerAutoBids(int itemId, String currentWinner,
+                                double currentBid, AuctionServer auctionServer) {
         String winner = currentWinner;
         double price  = currentBid;
 
         for (int round = 0; round < MAX_AUTO_ROUNDS; round++) {
-            AutoBidEntry candidate = null;
 
-            for (AutoBidEntry entry : list) {
-                if (entry.username.equals(winner)) continue;
-                double nextBid = price + entry.increment;
-                if (nextBid <= entry.maxBid) {
-                    candidate = entry;
-                    break;
+            // ── BƯỚC 1: Tìm candidate — giữ lock ngắn, không có I/O ──────────
+            final AutoBidEntry candidate;
+            final double nextBid;
+
+            synchronized (getLock(itemId)) {
+                List<AutoBidEntry> list = autoBids.get(itemId);
+                if (list == null || list.isEmpty()) break;
+
+                AutoBidEntry found = null;
+                for (AutoBidEntry entry : list) {
+                    if (entry.username.equals(winner)) continue;
+                    double proposed = price + entry.increment;
+                    if (proposed <= entry.maxBid) {
+                        found = entry;
+                        break;
+                    }
                 }
+                if (found == null) break;
+
+                candidate = found;
+                nextBid   = price + candidate.increment;
             }
+            // Lock đã được giải phóng trước khi gọi DB
 
-            if (candidate == null) break;
+            // ── BƯỚC 2: Đặt giá — I/O DB, KHÔNG giữ lock ────────────────────
+            String result = bidDAO.placeBidTransaction(itemId, candidate.username, nextBid);
 
-            double nextBid = price + candidate.increment;
-            String result  = bidDAO.placeBidTransaction(itemId, candidate.username, nextBid);
-
+            // ── BƯỚC 3: Xử lý kết quả ────────────────────────────────────────
             if ("SUCCESS".equals(result)) {
                 winner = candidate.username;
                 price  = nextBid;
 
                 Item updated = itemDAO.getItemById(itemId);
                 if (updated == null) break;
+
+                // applyAntiSniping cũng dùng per-item lock bên trong
                 applyAntiSniping(updated);
 
                 updated.setCurrentHighestBid(price);
                 updated.setCurrentHighestBidder(winner);
-                auctionServer.broadcastToItemWatchers(itemId, new Message("BID_UPDATE", gson.toJson(updated)));
+                auctionServer.broadcastToItemWatchers(itemId,
+                        new Message("BID_UPDATE", gson.toJson(updated)));
 
                 System.out.printf("[AUTO-BID] Round %d: %s đặt $%.2f cho item #%d%n",
                         round + 1, winner, price, itemId);
             } else {
+                // DB từ chối (phiên đã đóng, giá không còn hợp lệ, v.v.)
                 System.err.println("[AUTO-BID] placeBidTransaction trả lỗi: " + result);
                 break;
             }
@@ -198,18 +268,42 @@ public class AuctionService {
 
     // =========================================================================
     // HELPER — Anti-sniping: nếu còn < 60 giây thì gia hạn thêm 5 phút
+    //
+    // FIX RACE CONDITION:
+    //   Phiên bản cũ (không synchronized):
+    //     Thread A đọc remaining=55s → vào if → chưa kịp updateEndTime
+    //     Thread B đọc remaining=55s → vào if → cả 2 gia hạn → +10 phút
+    //
+    //   Phiên bản mới (synchronized trên per-item lock):
+    //     Thread A lấy lock → re-read end_time từ DB → remaining=55s → gia hạn → giải phóng lock
+    //     Thread B lấy lock → re-read end_time từ DB → remaining=305s → KHÔNG gia hạn → giải phóng lock
+    //
+    //   Tại sao cần re-read trong DB (itemDAO.getItemById)?
+    //     end_time trong object `item` được truyền vào là snapshot tại thời điểm
+    //     bid xảy ra. Thread B có thể đọc snapshot cũ trước khi Thread A cập nhật.
+    //     Re-read đảm bảo lấy giá trị mới nhất từ DB.
     // =========================================================================
     private void applyAntiSniping(Item item) {
         if (item.getEndTime() <= 0) return;
-        long remaining = item.getEndTime() - System.currentTimeMillis();
-        if (remaining > 0 && remaining < 60_000) {
-            long newEndTime = item.getEndTime() + 5 * 60_000L;
-            itemDAO.updateEndTime(item.getId(), newEndTime);
-            item.setEndTime(newEndTime);
 
-            String payload = gson.toJson(new TimeExtendedPayload(item.getId(), newEndTime));
-            server.broadcastToItemWatchers(item.getId(), new Message("TIME_EXTENDED", payload));
-            System.out.println("[ANTI-SNIPING] Gia hạn +5 phút cho item #" + item.getId());
+        synchronized (getLock(item.getId())) {
+            // Re-read từ DB để lấy end_time mới nhất (thread khác có thể đã gia hạn rồi)
+            Item fresh = itemDAO.getItemById(item.getId());
+            if (fresh == null || fresh.getStatus() != Item.Status.RUNNING) return;
+
+            long remaining = fresh.getEndTime() - System.currentTimeMillis();
+            if (remaining > 0 && remaining < 60_000) {
+                long newEndTime = fresh.getEndTime() + 5 * 60_000L;
+                itemDAO.updateEndTime(item.getId(), newEndTime);
+
+                // Cập nhật object được truyền vào để caller thấy end_time mới
+                item.setEndTime(newEndTime);
+
+                String payload = gson.toJson(new TimeExtendedPayload(item.getId(), newEndTime));
+                server.broadcastToItemWatchers(item.getId(),
+                        new Message("TIME_EXTENDED", payload));
+                System.out.println("[ANTI-SNIPING] Gia hạn +5 phút cho item #" + item.getId());
+            }
         }
     }
 
@@ -219,6 +313,7 @@ public class AuctionService {
     public void shutdown() {
         scheduler.shutdown();
         autoBids.clear();
+        itemLocks.clear();
         System.out.println("[SERVICE] AuctionService đã dừng.");
     }
 
