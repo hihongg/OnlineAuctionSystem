@@ -18,6 +18,12 @@ public class AuctionServer {
     private ExecutorService pool = Executors.newFixedThreadPool(50);
     private AuctionService auctionService;
 
+    // FIX: đưa serverSocket thành field để shutdown() có thể đóng nó.
+    // Trước đây serverSocket nằm trong try-with-resources của start() nên
+    // shutdown() không thể chạm tới — server.accept() sẽ block mãi mãi
+    // dù pool đã shutdown.
+    private ServerSocket serverSocket;
+
     public AuctionServer(int port) {
         this.port = port;
         this.auctionService = new AuctionService(this);
@@ -26,10 +32,13 @@ public class AuctionServer {
     public void start() {
         System.out.println("[SERVER] Máy chủ đấu giá đang khởi động trên port " + port + "...");
 
-        try (ServerSocket serverSocket = new ServerSocket(port)) {
+        try {
+            serverSocket = new ServerSocket(port);
             System.out.println("[SERVER] Đang chờ Client kết nối...");
 
-            while (true) {
+            // Dùng !serverSocket.isClosed() thay vì while(true) để vòng lặp
+            // thoát ngay khi shutdown() đóng serverSocket
+            while (!serverSocket.isClosed()) {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("[SERVER] Client mới kết nối: " + clientSocket.getInetAddress());
 
@@ -38,7 +47,12 @@ public class AuctionServer {
                 pool.execute(clientThread);
             }
         } catch (IOException e) {
-            System.err.println("[SERVER] Lỗi khởi động server: " + e.getMessage());
+            // Bỏ qua exception khi serverSocket bị đóng chủ động qua shutdown()
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                System.err.println("[SERVER] Lỗi khởi động server: " + e.getMessage());
+            } else {
+                System.out.println("[SERVER] ServerSocket đã đóng — vòng accept() kết thúc.");
+            }
         }
     }
 
@@ -88,7 +102,17 @@ public class AuctionServer {
     }
 
     public void shutdown() {
+        // 1. Đóng serverSocket → accept() ném SocketException → vòng lặp trong start() thoát
+        try {
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                serverSocket.close();
+            }
+        } catch (IOException e) {
+            System.err.println("[SERVER] Lỗi khi đóng ServerSocket: " + e.getMessage());
+        }
+        // 2. Dừng AuctionService (scheduler + autoBids)
         auctionService.shutdown();
+        // 3. Chờ các ClientHandler thread hoàn thành
         pool.shutdown();
     }
 }

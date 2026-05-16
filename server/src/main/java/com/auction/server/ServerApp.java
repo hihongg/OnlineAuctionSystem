@@ -12,10 +12,11 @@ public class ServerApp {
         System.out.println("=== HỆ THỐNG ĐẤU GIÁ TRỰC TUYẾN - SERVER KHỞI ĐỘNG ===");
 
         // 1. Kiểm tra kết nối Cơ sở dữ liệu (Database)
-        try {
-            if (DatabaseConnection.getConnection() != null) {
-                System.out.println("[DB] Kết nối cơ sở dữ liệu MySQL thành công!");
-            }
+        // FIX: dùng try-with-resources để connection được trả về pool ngay sau kiểm tra.
+        // Phiên bản cũ: getConnection() != null — connection lấy ra nhưng không bao giờ
+        // được đóng → rò rỉ 1 connection khỏi HikariCP pool khi server khởi động.
+        try (java.sql.Connection testConn = DatabaseConnection.getConnection()) {
+            System.out.println("[DB] Kết nối cơ sở dữ liệu MySQL thành công!");
         } catch (Exception e) {
             System.err.println("[DB] Lỗi kết nối CSDL: " + e.getMessage());
             System.err.println("[SERVER] Máy chủ không thể hoạt động nếu thiếu DB. Đang tắt hệ thống...");

@@ -65,8 +65,11 @@ public class ClientHandler implements Runnable {
     private final BidDAO bidDAO = new BidDAO();
     private final Gson gson = new Gson();
 
-    // Lưu username sau khi đăng nhập để dùng cho PLACE_BID
+    // Lưu thông tin sau khi đăng nhập (username + role).
+    // FIX: cache role thay vì gọi userDAO.getUserInfo() cho mỗi lệnh —
+    // giảm ít nhất 8 query DB thừa mỗi phiên làm việc.
     private String loggedInUsername = null;
+    private String loggedInRole     = null;
 
     /**
      * ID của item mà client đang theo dõi realtime (màn hình ItemDetail).
@@ -280,6 +283,7 @@ public class ClientHandler implements Runnable {
 
         if (success) {
             loggedInUsername = username; // Tự động đăng nhập ngay sau đăng ký
+            loggedInRole     = role;     // FIX: cache role để không phải query DB mỗi lệnh
             System.out.println("[HANDLER] Đăng ký thành công: " + username + " (" + role + ")");
             sendMessage("SUCCESS:" + role); // Trả role về để client hiển thị đúng giao diện
         } else {
@@ -302,11 +306,11 @@ public class ClientHandler implements Runnable {
         boolean valid = userDAO.authenticateUser(username, password);
 
         if (valid) {
-            loggedInUsername = username;
-
-            // Lấy thêm role để client hiển thị đúng giao diện
             String[] userInfo = userDAO.getUserInfo(username);
             String role = (userInfo != null) ? userInfo[1] : "BIDDER";
+
+            loggedInUsername = username;
+            loggedInRole     = role; // FIX: cache role để không phải query DB mỗi lệnh
 
             System.out.println("[HANDLER] Đăng nhập thành công: " + username + " (" + role + ")");
             sendMessage("SUCCESS:" + role); // Ví dụ: "SUCCESS:BIDDER"
@@ -376,9 +380,8 @@ public class ClientHandler implements Runnable {
             return;
         }
 
-        // Kiểm tra quyền Admin
-        String[] info = userDAO.getUserInfo(loggedInUsername);
-        if (info == null || !info[1].equals("ADMIN")) {
+        // FIX: dùng loggedInRole đã cache — không cần query DB thêm
+        if (!"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Admin mới có quyền xem toàn bộ danh sách sản phẩm");
             return;
         }
@@ -427,8 +430,8 @@ public class ClientHandler implements Runnable {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        String[] info = userDAO.getUserInfo(loggedInUsername);
-        if (info == null || !"ADMIN".equals(info[1])) {
+        // FIX: dùng loggedInRole đã cache
+        if (!"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Admin mới có quyền xem danh sách người dùng");
             return;
         }
@@ -463,8 +466,8 @@ public class ClientHandler implements Runnable {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        String[] info = userDAO.getUserInfo(loggedInUsername);
-        if (info == null || !"ADMIN".equals(info[1])) {
+        // FIX: dùng loggedInRole đã cache
+        if (!"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Admin mới có quyền xóa người dùng");
             return;
         }
@@ -493,8 +496,8 @@ public class ClientHandler implements Runnable {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        String[] info = userDAO.getUserInfo(loggedInUsername);
-        if (info == null || !"ADMIN".equals(info[1])) {
+        // FIX: dùng loggedInRole đã cache
+        if (!"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Admin mới có quyền thay đổi role người dùng");
             return;
         }
@@ -529,8 +532,8 @@ public class ClientHandler implements Runnable {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        String[] info = userDAO.getUserInfo(loggedInUsername);
-        if (info == null || !"ADMIN".equals(info[1])) {
+        // FIX: dùng loggedInRole đã cache
+        if (!"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Admin mới có quyền thay đổi trạng thái phiên");
             return;
         }
@@ -654,9 +657,8 @@ public class ClientHandler implements Runnable {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        // Lấy role để xác minh Seller/Admin
-        String[] info = userDAO.getUserInfo(loggedInUsername);
-        if (info == null || (!info[1].equals("SELLER") && !info[1].equals("ADMIN"))) {
+        // FIX: dùng loggedInRole đã cache
+        if (!"SELLER".equals(loggedInRole) && !"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Seller hoặc Admin mới được thêm sản phẩm");
             return;
         }
@@ -694,8 +696,8 @@ public class ClientHandler implements Runnable {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        String[] info = userDAO.getUserInfo(loggedInUsername);
-        if (info == null || (!info[1].equals("SELLER") && !info[1].equals("ADMIN"))) {
+        // FIX: dùng loggedInRole đã cache
+        if (!"SELLER".equals(loggedInRole) && !"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Seller hoặc Admin mới được sửa sản phẩm");
             return;
         }
@@ -730,8 +732,8 @@ public class ClientHandler implements Runnable {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        String[] info = userDAO.getUserInfo(loggedInUsername);
-        if (info == null || (!info[1].equals("SELLER") && !info[1].equals("ADMIN"))) {
+        // FIX: dùng loggedInRole đã cache
+        if (!"SELLER".equals(loggedInRole) && !"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Seller hoặc Admin mới được xóa sản phẩm");
             return;
         }
