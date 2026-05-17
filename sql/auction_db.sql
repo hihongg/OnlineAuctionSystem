@@ -48,21 +48,22 @@ CREATE TABLE IF NOT EXISTS items (
     start_time          TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     end_time            BIGINT        DEFAULT 0,            -- lưu dạng milliseconds
     seller_id           INT,
+    category            VARCHAR(50)   DEFAULT 'ELECTRONICS', -- Factory Method: loại item
     FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE SET NULL
     );
 
 -- Dữ liệu mẫu để test (trạng thái RUNNING, kết thúc sau 1 giờ)
 INSERT IGNORE INTO items
     (name, description, starting_price, current_highest_bid, highest_bidder,
-     status, end_time, seller_id)
+     status, end_time, seller_id, category)
 VALUES
     ('Laptop Dell XPS 15', 'Máy tính xách tay cao cấp, i7-12700H, 16GB RAM',
      500.0, 500.0, 'Chưa có', 'RUNNING',
-     (UNIX_TIMESTAMP() + 3600) * 1000, 1),
+     (UNIX_TIMESTAMP() + 3600) * 1000, 1, 'ELECTRONICS'),
 
     ('Bàn phím cơ Keychron Q1', 'Bàn phím cơ full-aluminum, switch Gateron Pro',
      80.0, 80.0, 'Chưa có', 'RUNNING',
-     (UNIX_TIMESTAMP() + 7200) * 1000, 1);
+     (UNIX_TIMESTAMP() + 7200) * 1000, 1, 'ELECTRONICS');
 
 -- ------------------------------------------------------------
 -- Bảng lịch sử đặt giá

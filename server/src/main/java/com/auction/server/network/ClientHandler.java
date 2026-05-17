@@ -5,6 +5,7 @@ import com.auction.server.dao.ItemDAO;
 import com.auction.server.dao.UserDAO;
 import com.auction.server.services.AuctionService;
 import com.auction.shared.models.Item;
+import com.auction.shared.models.ItemFactory;
 import com.auction.shared.models.Message;
 import com.google.gson.Gson;
 
@@ -545,8 +546,20 @@ public class ClientHandler implements Runnable {
 
     // =========================================================================
     // GỬI TIN NHẮN VỀ CLIENT
+    //
+    // FIX THREAD-SAFETY: synchronized vì sendMessage() được gọi từ 2 nguồn:
+    //   1. Handler thread (response trực tiếp sau lệnh của client)
+    //   2. Scheduler/broadcast thread (BID_UPDATE, AUCTION_ENDED từ AuctionServer)
+    //
+    // PrintWriter.println() KHÔNG phải thread-safe. Nếu hai thread cùng gọi
+    // out.println() cùng lúc, output có thể bị xen kẽ (interleave) và client
+    // nhận được dữ liệu lộn xộn không parse được.
+    //
+    // Dùng synchronized(this) thay vì ReentrantLock vì:
+    //   - Method chỉ có 1 thao tác đơn giản (println), không cần try/finally.
+    //   - Thời gian giữ lock cực ngắn (microseconds) → không gây contention đáng kể.
     // =========================================================================
-    public void sendMessage(String message) {
+    public synchronized void sendMessage(String message) {
         if (out != null) {
             out.println(message);
         }
@@ -571,6 +584,8 @@ public class ClientHandler implements Runnable {
 
     // =========================================================================
     // HANDLER: ADD_ITEM
+    // Format: ADD_ITEM:<name>:<description>:<startingPrice>:<endTimeMs>[:<category>]
+    //   category (tuỳ chọn): ELECTRONICS | ART | VEHICLE  (mặc định: ELECTRONICS)
     // =========================================================================
     private void handleAddItem(String[] parts) {
         if (loggedInUsername == null) {
@@ -582,7 +597,7 @@ public class ClientHandler implements Runnable {
             return;
         }
         if (parts.length < 5) {
-            sendMessage("FAIL:Format: ADD_ITEM:<name>:<description>:<startingPrice>:<endTimeMs>");
+            sendMessage("FAIL:Format: ADD_ITEM:<name>:<description>:<startingPrice>:<endTimeMs>[:<category>]");
             return;
         }
         try {
@@ -590,14 +605,20 @@ public class ClientHandler implements Runnable {
             String description = parts[2].trim();
             double startPrice  = Double.parseDouble(parts[3].trim());
             long   endTime     = Long.parseLong(parts[4].trim());
+            // category là tham số tuỳ chọn (parts[5]) — mặc định ELECTRONICS
+            String category    = (parts.length >= 6 && !parts[5].trim().isEmpty())
+                    ? parts[5].trim().toUpperCase()
+                    : "ELECTRONICS";
             int    sellerId    = userDAO.getUserIdByUsername(loggedInUsername);
 
-            Item newItem = new Item(name, description, startPrice, endTime, sellerId);
+            // Factory Method: tạo đúng subclass (Electronics / Art / Vehicle)
+            Item newItem = ItemFactory.create(category, name, description, startPrice, endTime, sellerId);
             int newId = itemDAO.addItem(newItem);
 
             if (newId > 0) {
                 sendMessage("SUCCESS:Đã thêm sản phẩm #" + newId);
-                System.out.println("[HANDLER] " + loggedInUsername + " thêm item #" + newId + ": " + name);
+                System.out.println("[HANDLER] " + loggedInUsername + " thêm item #" + newId
+                        + " [" + category + "]: " + name);
             } else {
                 sendMessage("FAIL:Không thể thêm sản phẩm. Kiểm tra lại dữ liệu.");
             }

@@ -1,6 +1,7 @@
 package com.auction.server.dao;
 
 import com.auction.shared.models.Item;
+import com.auction.shared.models.ItemFactory;
 import com.auction.server.utils.DatabaseConnection;
 
 import java.sql.Connection;
@@ -228,8 +229,8 @@ public class ItemDAO {
     // =========================================================================
     public int addItem(Item item) {
         String sql = "INSERT INTO items (name, description, starting_price, current_highest_bid, "
-                + "highest_bidder, status, end_time, seller_id) "
-                + "VALUES (?, ?, ?, ?, 'Chưa có', 'OPEN', ?, ?)";
+                + "highest_bidder, status, end_time, seller_id, category) "
+                + "VALUES (?, ?, ?, ?, 'Chưa có', 'OPEN', ?, ?, ?)";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql,
@@ -241,6 +242,7 @@ public class ItemDAO {
             pstmt.setDouble(4, item.getStartingPrice());
             pstmt.setLong(5, item.getEndTime());
             pstmt.setInt(6, item.getSellerId());
+            pstmt.setString(7, item.getCategory()); // Factory Method: lưu loại item vào DB
 
             int rows = pstmt.executeUpdate();
             if (rows > 0) {
@@ -319,11 +321,14 @@ public class ItemDAO {
     // HELPER — đọc một dòng ResultSet thành object Item
     // =========================================================================
     private Item mapResultSetToItem(ResultSet rs) throws SQLException {
-        int id            = rs.getInt("id");
+        int    id         = rs.getInt("id");
         String name       = rs.getString("name");
         double startPrice = rs.getDouble("starting_price");
 
-        Item item = new Item(id, name, startPrice);
+        // Factory Method: đọc category từ DB, tạo đúng subclass
+        // (Electronics / Art / Vehicle). Item cũ chưa có cột category → mặc định ELECTRONICS.
+        String category = rs.getString("category");
+        Item item = ItemFactory.create(category, id, name, startPrice);
 
         double currentBid = rs.getDouble("current_highest_bid");
         if (currentBid > 0) {
