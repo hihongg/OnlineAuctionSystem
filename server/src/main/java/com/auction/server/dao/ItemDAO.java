@@ -120,7 +120,18 @@ public class ItemDAO {
 
     // =========================================================================
     // 4a. Cập nhật bid theo itemId (dùng WHERE id = ?)
+    //
+    // ⚠️  DEPRECATED — CHỈ GIỮ LẠI CHO ItemDAOTest, KHÔNG DÙNG TRONG PRODUCTION.
+    //
+    // Tại sao không dùng ở production?
+    //   Method này chỉ UPDATE bảng items (current_highest_bid / highest_bidder).
+    //   Nó KHÔNG ghi vào bảng bid_history → lịch sử đấu giá sẽ bị thiếu,
+    //   biểu đồ giá realtime (BidDAO.getBidHistory) sẽ không hiển thị đúng.
+    //
+    // Dùng thay thế: BidDAO.placeBidTransaction(itemId, username, bidAmount)
+    //   → Xử lý Transaction + Pessimistic Lock + ghi bid_history đầy đủ.
     // =========================================================================
+    @Deprecated
     public boolean placeBidById(int itemId, double bidAmount, String username) {
         String sql = "UPDATE items SET current_highest_bid = ?, highest_bidder = ? WHERE id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
@@ -139,7 +150,11 @@ public class ItemDAO {
 
     // =========================================================================
     // 4b. Cập nhật bid theo tên (tương thích ngược)
+    //
+    // ⚠️  DEPRECATED — Lý do tương tự placeBidById(): không ghi bid_history.
+    //     Dùng BidDAO.placeBidTransaction() thay thế.
     // =========================================================================
+    @Deprecated
     public boolean placeBid(String itemName, double bidAmount, String username) {
         String sql = "UPDATE items SET current_highest_bid = ?, highest_bidder = ? WHERE name = ?";
         try (Connection conn = DatabaseConnection.getConnection();
