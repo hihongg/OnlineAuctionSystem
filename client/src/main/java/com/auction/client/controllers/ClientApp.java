@@ -11,12 +11,13 @@ public class ClientApp extends Application {
 
     @Override
     public void start(Stage primaryStage) throws Exception {
-        Parent root = FXMLLoader.load(new File("client/src/main/resources/LoginView.fxml").toURI().toURL());
+        // TẠM THỜI: Đổi đường dẫn từ LoginView.fxml sang MainDashboard.fxml để mở thẳng trang Dashboard
+        Parent root = FXMLLoader.load(new File("client/src/main/resources/MainDashboard.fxml").toURI().toURL());
 
-        primaryStage.setTitle("Online Auction System - Login");
+        primaryStage.setTitle("Online Auction System - Dashboard (Giai đoạn thiết kế UI)");
         primaryStage.setScene(new Scene(root, 800, 500));
         primaryStage.centerOnScreen();
-        primaryStage.setMaximized(true);
+        primaryStage.setMaximized(true); // Tự động phóng to toàn màn hình
         primaryStage.show();
     }
 

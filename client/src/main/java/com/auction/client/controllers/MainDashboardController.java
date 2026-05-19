@@ -1,162 +1,106 @@
 package com.auction.client.controllers;
 
 import com.auction.client.models.AuctionItem;
-import javafx.animation.KeyFrame;
-import javafx.animation.Timeline;
+import com.auction.client.utils.NavigationUtils;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
-import javafx.geometry.Insets;
-import javafx.geometry.Pos;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
+import javafx.scene.Parent;
+import javafx.scene.control.TextField;
 import javafx.scene.layout.FlowPane;
-import javafx.scene.layout.VBox;
-import javafx.util.Duration;
+import javafx.stage.Stage;
 
+import java.io.IOException;
 import java.net.URL;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
-import java.util.Arrays;
-import java.util.List;
 import java.util.ResourceBundle;
-import javafx.event.ActionEvent;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
-import javafx.stage.Stage;
-import javafx.scene.Node;
+import java.util.stream.Collectors;
+
 public class MainDashboardController implements Initializable {
 
-    @FXML
-    private FlowPane itemGrid;
+    @FXML private FlowPane itemGrid;
+    @FXML private TextField txtSearch;
+
+    private NavigationUtils navUtils = new NavigationUtils();
+    private ObservableList<AuctionItem> masterData = FXCollections.observableArrayList();
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
-        loadAuctionItems();
-    }
+        // 1. Phải gọi 2 hàm này để nạp dữ liệu và vẽ Card ra màn hình
+        loadMockData();
+        renderCards(masterData);
 
-    private void loadAuctionItems() {
-        LocalDateTime now = LocalDateTime.now();
-
-        // Cập nhật mock data: Thời gian kết thúc = Hiện tại + X giờ/phút
-        List<AuctionItem> mockItems = Arrays.asList(
-                new AuctionItem("Bàn phím cơ Wooting 60HE", 175.50, now.plusHours(2).plusMinutes(15)),
-                new AuctionItem("Laptop Alienware x17 R2", 1200.00, now.plusHours(12)),
-                new AuctionItem("Tài khoản Minecraft Premium", 25.00, now.plusMinutes(45)),
-                new AuctionItem("Card đồ họa Intel Arc Graphics", 250.00, now.plusSeconds(10)) // Test thử kết thúc nhanh trong 10 giây
-        );
-
-        if (itemGrid != null) {
-            itemGrid.getChildren().clear();
-            for (AuctionItem item : mockItems) {
-                VBox card = createItemCard(item);
-                itemGrid.getChildren().add(card);
-            }
-        }
-    }
-
-    private VBox createItemCard(AuctionItem item) {
-        VBox card = new VBox(10);
-        card.setPadding(new Insets(15));
-        card.setStyle("-fx-border-color: #dcdde1; -fx-border-radius: 8; -fx-background-radius: 8; -fx-background-color: white;");
-        card.setPrefWidth(220);
-        card.setAlignment(Pos.CENTER_LEFT);
-
-        Label nameLabel = new Label(item.getName());
-        nameLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 15px; -fx-text-fill: #2f3640;");
-        nameLabel.setWrapText(true);
-
-        Label priceLabel = new Label("Giá hiện tại: $" + item.getCurrentBid());
-        priceLabel.setStyle("-fx-text-fill: #e1b12c; -fx-font-weight: bold; -fx-font-size: 14px;");
-
-        // Label thời gian rỗng ban đầu, sẽ được Timeline cập nhật liên tục
-        Label timeLabel = new Label();
-        timeLabel.setStyle("-fx-text-fill: #e84118; -fx-font-size: 13px; -fx-font-weight: bold;");
-
-        Button bidButton = new Button("Xem chi tiết");
-        bidButton.setMaxWidth(Double.MAX_VALUE);
-        bidButton.setStyle("-fx-background-color: #00a8ff; -fx-text-fill: white; -fx-cursor: hand; -fx-font-weight: bold;");
-
-        // --- LOGIC ĐẾM NGƯỢC (COUNTDOWN TIMELINE) ---
-        Timeline timeline = new Timeline(new KeyFrame(Duration.seconds(1), event -> {
-            LocalDateTime currentTime = LocalDateTime.now();
-
-            if (currentTime.isAfter(item.getEndTime()) || currentTime.isEqual(item.getEndTime())) {
-                timeLabel.setText("⏱ Đã kết thúc");
-                timeLabel.setStyle("-fx-text-fill: #7f8c8d; -fx-font-size: 13px; -fx-font-style: italic;");
-                bidButton.setDisable(true); // Vô hiệu hóa nút bấm khi hết giờ
+        // 2. Logic thanh tìm kiếm (giữ nguyên)
+        txtSearch.textProperty().addListener((observable, oldValue, newValue) -> {
+            String filter = newValue.toLowerCase().trim();
+            if (filter.isEmpty()) {
+                renderCards(masterData);
             } else {
-                long hours = ChronoUnit.HOURS.between(currentTime, item.getEndTime());
-                long minutes = ChronoUnit.MINUTES.between(currentTime, item.getEndTime()) % 60;
-                long seconds = ChronoUnit.SECONDS.between(currentTime, item.getEndTime()) % 60;
-
-                timeLabel.setText(String.format("⏱ Còn lại: %02d:%02d:%02d", hours, minutes, seconds));
-            }
-        }));
-        timeline.setCycleCount(Timeline.INDEFINITE); // Chạy vô hạn cho đến khi dừng thủ công hoặc thẻ bị hủy
-        timeline.play(); // Bắt đầu đếm ngược
-        // --------------------------------------------
-
-        // ... (phần code Timeline đếm ngược ở trên)
-        // ... (phần code Timeline ở trên giữ nguyên)
-
-        // ... (code đếm ngược Timeline phía trên giữ nguyên)
-
-        // ... (code đếm ngược Timeline phía trên giữ nguyên)
-
-        timeline.play(); // Bắt đầu đếm ngược
-
-        // --- ĐOẠN CODE CHUYỂN CẢNH MỚI ---
-        bidButton.setOnAction(event -> {
-            try {
-                java.net.URL url = getClass().getResource("/ItemDetail.fxml");
-                System.out.println("Đường dẫn file FXML: " + url);
-
-                if (url == null) {
-                    System.out.println("❌ LỖI: Không tìm thấy file FXML!");
-                    return;
-                }
-
-                // Chỉ khai báo loader và root 1 lần duy nhất ở đây
-                FXMLLoader loader = new FXMLLoader(url);
-                Parent root = loader.load();
-
-                ItemDetailController detailController = loader.getController();
-                detailController.setAuctionItem(item);
-
-                Stage stage = (Stage) ((javafx.scene.Node) event.getSource()).getScene().getWindow();
-                stage.getScene().setRoot(root);
-
-                stage.show();
-            } catch (Exception e) {
-                e.printStackTrace();
-                System.out.println("Lỗi chuyển cảnh sang ItemDetail");
+                var filtered = masterData.stream()
+                        .filter(item -> item.getName().toLowerCase().contains(filter))
+                        .collect(java.util.stream.Collectors.toList());
+                renderCards(filtered);
             }
         });
+    }
 
-        // 2 dòng này để đưa các thành phần vào trong thẻ
-        card.getChildren().addAll(nameLabel, priceLabel, timeLabel, bidButton);
-        return card;
-    } // <--- DẤU NGOẶC ĐÓNG HÀM createItemCard
-    @FXML
-    public void handleLogout(ActionEvent event) {
+    private void loadMockData() {
+        masterData.addAll(
+                new AuctionItem("Laptop Gaming Gigabyte A16", 1200.0, java.time.LocalDateTime.now().plusHours(2),
+                        "/images/lap.jpg", // Đã sửa lại đường dẫn chuẩn
+                        "Laptop cấu hình khủng màn hình 16 inch chuyên đồ họa và gaming nặng."),
+
+                new AuctionItem("Bàn phím cơ Keychron Q1", 80.0, java.time.LocalDateTime.now().plusMinutes(45),
+                        "/images/wooting.jpg", // Đã sửa lại đường dẫn chuẩn
+                        "Vỏ nhôm full aluminum, kết nối mượt mà, switch gõ siêu êm ái."),
+
+                new AuctionItem("Chuột Logitech G Pro Superlight", 130.0, java.time.LocalDateTime.now().plusDays(1),
+                        "/images/chuot.jpg", // Đã sửa lại đường dẫn chuẩn
+                        "Chuột không dây siêu nhẹ dành cho game thủ eSports chuyên nghiệp.")
+        );
+    }
+
+    private void renderCards(java.util.List<AuctionItem> items) {
+        itemGrid.getChildren().clear();
+        for (AuctionItem item : items) {
+            try {
+                FXMLLoader loader = new FXMLLoader(getClass().getResource("/ItemCard.fxml"));
+                Parent card = loader.load();
+
+                ItemCardController controller = loader.getController();
+                controller.setData(item, () -> openItemDetails(item));
+
+                itemGrid.getChildren().add(card);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void openItemDetails(AuctionItem item) {
         try {
-            // Gọi công cụ chuyển cảnh của bạn
-            com.auction.client.utils.NavigationUtils navUtils = new com.auction.client.utils.NavigationUtils();
-            navUtils.switchScene(event, "/LoginView.fxml", "Online Auction System - Login");
-        } catch (Exception e) {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/ItemDetail.fxml"));
+            Parent root = loader.load();
+
+            ItemDetailController controller = loader.getController();
+            controller.setAuctionItem(item);
+
+            Stage stage = (Stage) itemGrid.getScene().getWindow();
+            stage.getScene().setRoot(root);
+        } catch (IOException e) {
             e.printStackTrace();
-            System.out.println("Lỗi khi quay lại màn hình Login");
         }
     }
-    @FXML
-    public void showCreateAuctionForm(ActionEvent event) {
-        try {
-            com.auction.client.utils.NavigationUtils navUtils = new com.auction.client.utils.NavigationUtils();
-            // Gọi công cụ chuyển cảnh sang màn hình Đăng bán (chúng ta sẽ tạo file này ở Bước 2)
-            navUtils.switchScene(event, "/CreateItem.fxml", "Online Auction System - Đăng bán sản phẩm");
-        } catch (Exception e) {
-            System.out.println("Bạn chưa tạo file CreateItem.fxml, hãy làm tiếp Bước 2 nhé!");
-        }
+
+    @FXML public void handleCreateItem(ActionEvent event) {
+        try { navUtils.switchScene(event, "/CreateItem.fxml", "Đăng bán"); } catch (Exception e) { e.printStackTrace(); }
     }
+
+    @FXML public void handleLogout(ActionEvent event) {
+        try { navUtils.switchScene(event, "/LoginView.fxml", "Đăng nhập"); } catch (Exception e) { e.printStackTrace(); }
+    }
+
 }

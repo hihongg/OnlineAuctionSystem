@@ -12,7 +12,7 @@
     <VBox prefWidth="400.0" alignment="CENTER" spacing="15.0"
           style="-fx-background-color: transparent; -fx-padding: 40px;">
 
-        <Label text="Login to Auction" style="-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: white;"/>
+        <Label text="Create Account" style="-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: white;"/>
 
         <TextField fx:id="txtEmail" promptText="Email Address"
                    style="-fx-pref-height: 40px; -fx-background-radius: 5px;"/>
@@ -20,12 +20,15 @@
         <PasswordField fx:id="txtPassword" promptText="Password"
                        style="-fx-pref-height: 40px; -fx-background-radius: 5px;"/>
 
-        <Button text="Login" onAction="#handleLogin" prefWidth="320.0"
-                style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 12px; -fx-background-radius: 5px; -fx-cursor: hand;"/>
+        <PasswordField fx:id="txtConfirmPassword" promptText="Confirm Password"
+                       style="-fx-pref-height: 40px; -fx-background-radius: 5px;"/>
 
-        <Label text="Don't have an account?" style="-fx-text-fill: white; -fx-padding: 10 0 0 0;"/>
+        <CheckBox text="I agree to the terms..." style="-fx-text-fill: white;"/>
 
-        <Button text="Create Account" onAction="#handleGoToRegister" prefWidth="320.0"
+        <Button text="Sign Up" onAction="#handleSignUp" prefWidth="320.0"
+                style="-fx-background-color: #4C4DD1; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 12px; -fx-background-radius: 5px; -fx-cursor: hand;"/>
+
+        <Button text="Already have an account? Login" onAction="#handleGoToLogin" prefWidth="320.0"
                 style="-fx-background-color: #4C4DD1; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 12px; -fx-background-radius: 5px; -fx-cursor: hand;"/>
     </VBox>
 </HBox>
