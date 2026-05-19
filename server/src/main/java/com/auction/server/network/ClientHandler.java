@@ -569,6 +569,10 @@ public class ClientHandler implements Runnable {
     // HANDLER: GET_BID_HISTORY
     // =========================================================================
     private void handleGetBidHistory(String[] parts) {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
         if (parts.length < 2) {
             sendMessage("FAIL:Thiếu itemId");
             return;
