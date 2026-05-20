@@ -15,6 +15,7 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Xử lý giao tiếp với một Client cụ thể.
@@ -789,13 +790,24 @@ public class ClientHandler implements Runnable {
         }
 
         auctionService.registerAutoBid(itemId, loggedInUsername, maxBid, increment);
+
+        // Phản hồi client NGAY — không chờ triggerAutoBids hoàn thành.
+        // triggerAutoBids có thể chạy tới 50 vòng DB I/O (~50–200ms/vòng = vài giây).
+        // Nếu gọi đồng bộ, client sẽ bị treo cho đến khi toàn bộ chuỗi auto-bid xong.
+        // Giải pháp: dispatch sang ForkJoinPool.commonPool() (thread pool dùng chung của JVM).
+        // Kết quả từng vòng auto-bid vẫn được broadcast đến watcher qua sendMessage()
+        // như bình thường — client nhận realtime update qua BID_UPDATE, không cần chờ.
         sendMessage("SUCCESS:Đã đăng ký auto-bid thành công!");
 
-        auctionService.triggerAutoBids(
-                itemId,
-                item.getCurrentHighestBidder(),
-                item.getCurrentHighestBid(),
-                server);
+        final String currentBidder = item.getCurrentHighestBidder();
+        final double currentBid    = item.getCurrentHighestBid();
+        CompletableFuture.runAsync(() ->
+                        auctionService.triggerAutoBids(itemId, currentBidder, currentBid, server))
+                .exceptionally(ex -> {
+                    System.err.println("[HANDLER] Lỗi async triggerAutoBids item #"
+                            + itemId + ": " + ex.getMessage());
+                    return null;
+                });
     }
 
     // =========================================================================

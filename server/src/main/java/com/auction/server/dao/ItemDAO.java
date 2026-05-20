@@ -132,7 +132,7 @@ public class ItemDAO {
     //   → Xử lý Transaction + Pessimistic Lock + ghi bid_history đầy đủ.
     // =========================================================================
     @Deprecated
-    public boolean placeBidById(int itemId, double bidAmount, String username) {
+    boolean placeBidById(int itemId, double bidAmount, String username) {
         String sql = "UPDATE items SET current_highest_bid = ?, highest_bidder = ? WHERE id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -155,7 +155,7 @@ public class ItemDAO {
     //     Dùng BidDAO.placeBidTransaction() thay thế.
     // =========================================================================
     @Deprecated
-    public boolean placeBid(String itemName, double bidAmount, String username) {
+    boolean placeBid(String itemName, double bidAmount, String username) {
         String sql = "UPDATE items SET current_highest_bid = ?, highest_bidder = ? WHERE name = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
