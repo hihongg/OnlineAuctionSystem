@@ -2,6 +2,7 @@ package com.auction.server.network;
 
 import com.auction.shared.models.Message;
 import com.auction.server.services.AuctionService;
+import com.auction.server.utils.DatabaseConnection;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class AuctionServer {
 
@@ -101,8 +103,27 @@ public class AuctionServer {
         System.out.println("[SERVER] Một Client đã ngắt kết nối. Tổng số online: " + connectedClients.size());
     }
 
+    /**
+     * Tắt server theo đúng thứ tự để tránh mất dữ liệu và rò rỉ tài nguyên.
+     *
+     * Thứ tự shutdown quan trọng:
+     *   1. Đóng ServerSocket  → ngăn client mới kết nối vào
+     *   2. Tắt AuctionService → dừng scheduler kiểm tra phiên đấu giá
+     *   3. Tắt thread pool    → các ClientHandler đang chạy được phép hoàn thành
+     *   4. Chờ pool kết thúc  → đảm bảo mọi giao dịch DB đang thực hiện xong xuôi
+     *   5. Đóng DB pool       → giải phóng kết nối HikariCP một cách sạch sẽ
+     *
+     * Tại sao phải gọi awaitTermination() trước khi đóng DB?
+     *   - Nếu đóng DB pool ngay sau pool.shutdown(), các thread ClientHandler
+     *     vẫn đang chạy có thể đang giữa chừng một transaction SQL.
+     *   - Lấy connection từ pool đã đóng sẽ ném SQLException → dữ liệu bị mất.
+     *   - awaitTermination(10s) chờ tối đa 10 giây để các thread tự kết thúc,
+     *     sau đó mới tiến hành đóng DB — đảm bảo không có transaction nào bị cắt ngang.
+     */
     public void shutdown() {
-        // 1. Đóng serverSocket → accept() ném SocketException → vòng lặp trong start() thoát
+        System.out.println("[SERVER] Đang tắt server...");
+
+        // Bước 1: Đóng ServerSocket → accept() ném SocketException → vòng lặp trong start() thoát
         try {
             if (serverSocket != null && !serverSocket.isClosed()) {
                 serverSocket.close();
@@ -110,9 +131,34 @@ public class AuctionServer {
         } catch (IOException e) {
             System.err.println("[SERVER] Lỗi khi đóng ServerSocket: " + e.getMessage());
         }
-        // 2. Dừng AuctionService (scheduler + autoBids)
+
+        // Bước 2: Dừng AuctionService (scheduler kiểm tra phiên + xử lý autoBids)
         auctionService.shutdown();
-        // 3. Chờ các ClientHandler thread hoàn thành
+
+        // Bước 3: Yêu cầu thread pool dừng nhận task mới
+        // Các ClientHandler đang chạy vẫn được phép hoàn thành công việc hiện tại
         pool.shutdown();
+
+        // Bước 4: Chờ tối đa 10 giây để các ClientHandler thread kết thúc
+        // Quan trọng: phải chờ TRƯỚC khi đóng DB pool,
+        // vì các thread có thể đang thực hiện transaction SQL dở dang.
+        try {
+            if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
+                // Hết 10 giây mà vẫn còn thread → ép dừng ngay
+                pool.shutdownNow();
+                System.out.println("[SERVER] Ép dừng các thread còn lại sau 10 giây chờ.");
+            }
+        } catch (InterruptedException e) {
+            // Thread hiện tại bị interrupt trong khi đang chờ → ép dừng pool
+            pool.shutdownNow();
+            Thread.currentThread().interrupt(); // khôi phục trạng thái interrupt
+        }
+
+        // Bước 5: Đóng connection pool HikariCP — an toàn vì tất cả thread đã xong
+        // Nếu không gọi bước này: HikariCP giữ các TCP connection tới MySQL
+        // không giải phóng → MySQL báo "Too many connections" ở lần khởi động sau.
+        DatabaseConnection.shutdown();
+
+        System.out.println("[SERVER] Server đã tắt hoàn toàn.");
     }
 }
