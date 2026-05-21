@@ -20,10 +20,15 @@
         <PasswordField fx:id="txtPassword" promptText="Password"
                        style="-fx-pref-height: 40px; -fx-background-radius: 5px;"/>
 
+        <PasswordField fx:id="txtConfirmPassword" promptText="Confirm Password"
+                       style="-fx-pref-height: 40px; -fx-background-radius: 5px;"/>
+
         <CheckBox text="I agree to the terms..." style="-fx-text-fill: white;"/>
 
         <Button text="Sign Up" onAction="#handleSignUp" prefWidth="320.0"
                 style="-fx-background-color: #4C4DD1; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 12px; -fx-background-radius: 5px; -fx-cursor: hand;"/>
-    </VBox>
 
+        <Button text="Already have an account? Login" onAction="#handleGoToLogin" prefWidth="320.0"
+                style="-fx-background-color: #4C4DD1; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 12px; -fx-background-radius: 5px; -fx-cursor: hand;"/>
+    </VBox>
 </HBox>

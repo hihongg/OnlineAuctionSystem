@@ -2,99 +2,101 @@ package com.auction.client.controllers;
 
 import com.auction.client.utils.ClientService;
 import com.auction.client.utils.NavigationUtils;
-import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Hyperlink;
-import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
-import javafx.scene.control.Alert.AlertType;
-import javafx.scene.layout.VBox;
+import javafx.scene.control.Alert;
+import javafx.event.ActionEvent;
 
 public class LoginController {
 
-    @FXML private Label lblTitle;
-    @FXML private VBox loginForm;
-    @FXML private VBox registerForm;
-
-    // Login fields
-    @FXML private TextField txtLoginUsername;
-    @FXML private PasswordField txtLoginPassword;
-
-    // Register fields
     @FXML private TextField txtEmail;
     @FXML private PasswordField txtPassword;
 
-    private boolean isLoginMode = true;
+    // Biến này có thể null nếu đang ở màn hình Login, nên không bắt buộc (không lỗi)
+    @FXML private PasswordField txtConfirmPassword;
+
     private ClientService clientService = new ClientService();
     private NavigationUtils navUtils = new NavigationUtils();
 
-    // Xử lý Login
+    // 1. XỬ LÝ KHI BẤM NÚT LOGIN (Ở màn hình Login)
     @FXML
     private void handleLogin(ActionEvent event) {
-        String username = txtLoginUsername.getText().trim();
-        String password = txtLoginPassword.getText();
-
-        if (username.isEmpty() || password.isEmpty()) {
-            showAlert("Error", "Fields cannot be empty");
-            return;
-        }
-
-        String response = clientService.sendRequest("LOGIN:" + username + ":" + password);
-        if (response != null && response.startsWith("SUCCESS")) {
-            try {
-                navUtils.switchScene(event, "/MainDashboard.fxml", "Auction Dashboard");
-            } catch (Exception e) {
-                e.printStackTrace();
-                showAlert("System Error", "Cannot load Dashboard");
-            }
-        } else {
-            showAlert("Login Failed", "Invalid username or password");
-        }
-    }
-
-    // Xử lý Sign Up
-    @FXML
-    private void handleSignUp(ActionEvent event) {
         String email = txtEmail.getText().trim();
         String password = txtPassword.getText();
 
         if (email.isEmpty() || password.isEmpty()) {
-            showAlert("Error", "Fields cannot be empty");
+            showAlert(Alert.AlertType.WARNING, "Lỗi", "Vui lòng nhập Email và Password!");
+            return;
+        }
+
+        // Gửi yêu cầu LOGIN lên Server
+        String requestMessage = "LOGIN:" + email + ":" + password;
+        String response = clientService.sendRequest(requestMessage);
+
+        // Xử lý phản hồi từ Server
+        if ("SUCCESS".equals(response)) {
+            try {
+                navUtils.switchScene(event, "/MainDashboard.fxml", "Auction Dashboard");
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        } else if ("CONNECTION_ERROR".equals(response)) {
+            showAlert(Alert.AlertType.ERROR, "Lỗi kết nối", "Không thể kết nối đến máy chủ. Vui lòng thử lại sau.");
+        } else {
+            // Nếu Server trả về "FAIL" hoặc bất kỳ thứ gì khác
+            showAlert(Alert.AlertType.ERROR, "Sai thông tin", "Email hoặc mật khẩu không đúng!");
+        }
+    }
+
+    // 2. XỬ LÝ KHI BẤM NÚT SIGN UP (Ở màn hình Register)
+    @FXML
+    private void handleSignUp(ActionEvent event) {
+        String email = txtEmail.getText().trim();
+        String password = txtPassword.getText();
+        String confirm = txtConfirmPassword.getText();
+
+        if (email.isEmpty() || password.isEmpty() || confirm.isEmpty()) {
+            showAlert(Alert.AlertType.WARNING, "Lỗi", "Vui lòng nhập đầy đủ thông tin!");
+            return;
+        }
+
+        if (!password.equals(confirm)) {
+            showAlert(Alert.AlertType.ERROR, "Lỗi", "Mật khẩu xác nhận không khớp!");
             return;
         }
 
         String response = clientService.sendRequest("REGISTER:" + email + ":" + password);
         if ("SUCCESS".equals(response)) {
-            showAlert("Success", "Account created! Please login.");
-            handleSwitchMode(event);
+            showAlert(Alert.AlertType.INFORMATION, "Thành công", "Tạo tài khoản thành công! Vui lòng đăng nhập.");
+            handleGoToLogin(event); // Trở về trang login
         } else {
-            showAlert("Registration Failed", "Username already exists or Server error");
+            showAlert(Alert.AlertType.ERROR, "Thất bại", "Email đã tồn tại hoặc lỗi Server");
         }
     }
 
-    // Chuyển đổi giữa Login và Register
+    // 3. ĐIỀU HƯỚNG TỪ LOGIN -> REGISTER
     @FXML
-    private void handleSwitchMode(ActionEvent event) {
-        isLoginMode = !isLoginMode;
-        if (isLoginMode) {
-            lblTitle.setText("Login");
-            loginForm.setVisible(true);
-            loginForm.setManaged(true);
-            registerForm.setVisible(false);
-            registerForm.setManaged(false);
-        } else {
-            lblTitle.setText("Create Account");
-            loginForm.setVisible(false);
-            loginForm.setManaged(false);
-            registerForm.setVisible(true);
-            registerForm.setManaged(true);
+    private void handleGoToRegister(ActionEvent event) {
+        try {
+            navUtils.switchScene(event, "/RegisterView.fxml", "Create Account");
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
-    private void showAlert(String title, String content) {
-        Alert alert = new Alert(AlertType.INFORMATION);
+    // 4. ĐIỀU HƯỚNG TỪ REGISTER -> LOGIN
+    @FXML
+    private void handleGoToLogin(ActionEvent event) {
+        try {
+            navUtils.switchScene(event, "/LoginView.fxml", "Login");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void showAlert(Alert.AlertType type, String title, String content) {
+        Alert alert = new Alert(type);
         alert.setTitle(title);
         alert.setHeaderText(null);
         alert.setContentText(content);

@@ -1,19 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?import javafx.scene.layout.*?>
 <?import javafx.scene.control.*?>
+<?import javafx.geometry.Insets?>
 
-<VBox prefHeight="600.0" prefWidth="900.0" spacing="20"
+<VBox prefHeight="700.0" prefWidth="1000.0" spacing="20"
       xmlns="http://javafx.com/javafx/17"
       xmlns:fx="http://javafx.com/fxml/1"
       fx:controller="com.auction.client.controllers.MainDashboardController"
-      style="-fx-padding: 30; -fx-background-color: #f4f4f4;">
+      style="-fx-padding: 30; -fx-background-color: #F4F6F9;">
 
-    <HBox alignment="CENTER_LEFT" spacing="15">
-        <Label text="Online Auction System" style="-fx-font-size: 28px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+    <HBox alignment="CENTER_LEFT" spacing="15" style="-fx-background-color: white; -fx-padding: 15; -fx-background-radius: 10;">
+        <Label text="eBay Auction" style="-fx-font-size: 28px; -fx-font-weight: bold; -fx-text-fill: #0064D2;"/>
         <Region HBox.hgrow="ALWAYS" />
-        <Button text="Logout" onAction="#handleLogout" style="-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold;"/>
+        <Button text="➕ Đăng bán sản phẩm" onAction="#handleCreateItem" style="-fx-background-color: #3665F3; -fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold; -fx-padding: 8 20; -fx-background-radius: 20; -fx-cursor: hand;"/>
+        <Button text="Đăng xuất" onAction="#handleLogout" style="-fx-background-color: transparent; -fx-text-fill: #e74c3c; -fx-font-weight: bold; -fx-cursor: hand;"/>
     </HBox>
 
-    <FlowPane fx:id="itemGrid" VBox.vgrow="ALWAYS" hgap="20" vgap="20" alignment="TOP_LEFT" style="-fx-padding: 20;" />
+    <HBox alignment="CENTER_LEFT" spacing="15">
+        <TextField fx:id="txtSearch" promptText="🔍 Tìm kiếm tên sản phẩm đấu giá..." prefWidth="450"
+                   style="-fx-padding: 12 20; -fx-font-size: 14px; -fx-background-radius: 25; -fx-border-radius: 25; -fx-border-color: #3665F3; -fx-border-width: 1.5; -fx-background-color: white;"/>
+    </HBox>
 
+    <ScrollPane fitToWidth="true" VBox.vgrow="ALWAYS" style="-fx-background-color: transparent; -fx-background-insets: 0;">
+        <FlowPane fx:id="itemGrid" hgap="20" vgap="20" alignment="TOP_LEFT" style="-fx-background-color: transparent;">
+            <padding>
+                <Insets top="10" right="10" bottom="10" left="10"/>
+            </padding>
+        </FlowPane>
+    </ScrollPane>
 </VBox>
