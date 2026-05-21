@@ -589,8 +589,18 @@ public class ClientHandler implements Runnable {
 
     // =========================================================================
     // HANDLER: ADD_ITEM
-    // Format: ADD_ITEM:<name>:<description>:<startingPrice>:<endTimeMs>[:<category>]
-    //   category (tuỳ chọn): ELECTRONICS | ART | VEHICLE  (mặc định: ELECTRONICS)
+    //
+    // ĐÃ SỬA — chuyển sang JSON payload để tránh bug delimiter ':'.
+    //
+    // Format cũ (bị lỗi): ADD_ITEM:<name>:<description>:<price>:<endTime>[:<category>]
+    //   → Nếu name hoặc description chứa dấu ':', split(":") sẽ cắt nhầm.
+    //   Ví dụ: "ADD_ITEM:Laptop XPS:15:Mô tả:500.0:..." → parts[1]="Laptop XPS" ✗ (mất ":15")
+    //
+    // Format mới (đúng): ADD_ITEM:<jsonPayload>
+    //   Ví dụ: ADD_ITEM:{"name":"Laptop XPS:15","description":"Mô tả hay","startingPrice":500.0,"endTime":1748000000000,"category":"ELECTRONICS"}
+    //
+    // Client (CreateItemController) cần gửi theo format này. Gson parse an toàn
+    // vì JSON tự escape mọi ký tự đặc biệt bên trong chuỗi.
     // =========================================================================
     private void handleAddItem(String[] parts) {
         if (loggedInUsername == null) {
@@ -601,40 +611,67 @@ public class ClientHandler implements Runnable {
             sendMessage("FAIL:Chỉ Seller hoặc Admin mới được thêm sản phẩm");
             return;
         }
-        if (parts.length < 5) {
-            sendMessage("FAIL:Format: ADD_ITEM:<name>:<description>:<startingPrice>:<endTimeMs>[:<category>]");
+        // parts[0] = "ADD_ITEM", phần JSON bắt đầu từ index 1 (sau dấu ':' đầu tiên).
+        // Dùng indexOf để lấy toàn bộ JSON kể cả khi JSON chứa dấu ':'.
+        int colonIdx = parts[0].length() + 1; // vị trí sau "ADD_ITEM:"
+        // Lấy raw string để tìm đúng vị trí — parts bị split rồi nên dùng cách khác:
+        // Ta sẽ ghép lại từ parts[1..] bằng ':' vì Gson parse toàn bộ chuỗi JSON.
+        if (parts.length < 2 || parts[1].trim().isEmpty()) {
+            sendMessage("FAIL:Format: ADD_ITEM:{\"name\":\"...\",\"description\":\"...\",\"startingPrice\":100.0,\"endTime\":1748000000000,\"category\":\"ELECTRONICS\"}");
             return;
         }
+
+        // Ghép lại phần JSON (có thể bị split do ':' bên trong JSON)
+        String jsonPayload = String.join(":", java.util.Arrays.copyOfRange(parts, 1, parts.length)).trim();
+
         try {
-            String name        = parts[1].trim();
-            String description = parts[2].trim();
-            double startPrice  = Double.parseDouble(parts[3].trim());
-            long   endTime     = Long.parseLong(parts[4].trim());
-            // category là tham số tuỳ chọn (parts[5]) — mặc định ELECTRONICS
-            String category    = (parts.length >= 6 && !parts[5].trim().isEmpty())
-                    ? parts[5].trim().toUpperCase()
+            AddItemPayload p = gson.fromJson(jsonPayload, AddItemPayload.class);
+            if (p.name == null || p.name.trim().isEmpty()) {
+                sendMessage("FAIL:Tên sản phẩm không được để trống");
+                return;
+            }
+            if (p.startingPrice <= 0) {
+                sendMessage("FAIL:Giá khởi điểm phải lớn hơn 0");
+                return;
+            }
+            if (p.endTime <= System.currentTimeMillis()) {
+                sendMessage("FAIL:Thời gian kết thúc phải ở tương lai");
+                return;
+            }
+
+            String category = (p.category != null && !p.category.trim().isEmpty())
+                    ? p.category.trim().toUpperCase()
                     : "ELECTRONICS";
-            int    sellerId    = userDAO.getUserIdByUsername(loggedInUsername);
+            String description = (p.description != null) ? p.description.trim() : "";
+            int sellerId = userDAO.getUserIdByUsername(loggedInUsername);
 
             // Factory Method: tạo đúng subclass (Electronics / Art / Vehicle)
-            Item newItem = ItemFactory.create(category, name, description, startPrice, endTime, sellerId);
+            Item newItem = ItemFactory.create(category, p.name.trim(), description,
+                    p.startingPrice, p.endTime, sellerId);
             int newId = itemDAO.addItem(newItem);
 
             if (newId > 0) {
                 sendMessage("SUCCESS:Đã thêm sản phẩm #" + newId);
                 System.out.println("[HANDLER] " + loggedInUsername + " thêm item #" + newId
-                        + " [" + category + "]: " + name);
+                        + " [" + category + "]: " + p.name.trim());
             } else {
                 sendMessage("FAIL:Không thể thêm sản phẩm. Kiểm tra lại dữ liệu.");
             }
-        } catch (NumberFormatException e) {
-            sendMessage("FAIL:startingPrice hoặc endTimeMs không hợp lệ");
+        } catch (com.google.gson.JsonSyntaxException e) {
+            sendMessage("FAIL:JSON không hợp lệ. Format: ADD_ITEM:{\"name\":\"...\",\"description\":\"...\","
+                    + "\"startingPrice\":100.0,\"endTime\":1748000000000,\"category\":\"ELECTRONICS\"}");
         }
     }
 
     // =========================================================================
     // HANDLER: UPDATE_ITEM
-    // SECURITY FIX: Seller chỉ được sửa item của chính mình.
+    //
+    // ĐÃ SỬA — chuyển sang JSON payload (cùng lý do với ADD_ITEM).
+    //
+    // Format mới: UPDATE_ITEM:<jsonPayload>
+    //   Ví dụ: UPDATE_ITEM:{"itemId":5,"name":"Tên mới: v2","description":"Mô tả","startingPrice":150.0,"endTime":1748000000000}
+    //
+    // SECURITY: Seller chỉ được sửa item của chính mình; Admin sửa bất kỳ item nào.
     // =========================================================================
     private void handleUpdateItem(String[] parts) {
         if (loggedInUsername == null) {
@@ -645,23 +682,39 @@ public class ClientHandler implements Runnable {
             sendMessage("FAIL:Chỉ Seller hoặc Admin mới được sửa sản phẩm");
             return;
         }
-        if (parts.length < 6) {
-            sendMessage("FAIL:Format: UPDATE_ITEM:<itemId>:<name>:<description>:<startingPrice>:<endTimeMs>");
+        if (parts.length < 2 || parts[1].trim().isEmpty()) {
+            sendMessage("FAIL:Format: UPDATE_ITEM:{\"itemId\":5,\"name\":\"...\",\"description\":\"...\","
+                    + "\"startingPrice\":150.0,\"endTime\":1748000000000}");
             return;
         }
-        try {
-            int    itemId      = Integer.parseInt(parts[1].trim());
-            String name        = parts[2].trim();
-            String description = parts[3].trim();
-            double startPrice  = Double.parseDouble(parts[4].trim());
-            long   endTime     = Long.parseLong(parts[5].trim());
 
-            // SECURITY FIX: Seller chỉ được sửa item của chính mình.
-            // Admin được sửa bất kỳ item nào.
+        // Ghép lại JSON (tương tự ADD_ITEM)
+        String jsonPayload = String.join(":", java.util.Arrays.copyOfRange(parts, 1, parts.length)).trim();
+
+        try {
+            UpdateItemPayload p = gson.fromJson(jsonPayload, UpdateItemPayload.class);
+            if (p.itemId <= 0) {
+                sendMessage("FAIL:itemId không hợp lệ");
+                return;
+            }
+            if (p.name == null || p.name.trim().isEmpty()) {
+                sendMessage("FAIL:Tên sản phẩm không được để trống");
+                return;
+            }
+            if (p.startingPrice <= 0) {
+                sendMessage("FAIL:Giá khởi điểm phải lớn hơn 0");
+                return;
+            }
+            if (p.endTime <= System.currentTimeMillis()) {
+                sendMessage("FAIL:Thời gian kết thúc phải ở tương lai");
+                return;
+            }
+
+            // SECURITY: Seller chỉ được sửa item của chính mình.
             if ("SELLER".equals(loggedInRole)) {
-                Item target = itemDAO.getItemById(itemId);
+                Item target = itemDAO.getItemById(p.itemId);
                 if (target == null) {
-                    sendMessage("FAIL:Sản phẩm #" + itemId + " không tồn tại.");
+                    sendMessage("FAIL:Sản phẩm #" + p.itemId + " không tồn tại.");
                     return;
                 }
                 int myId = userDAO.getUserIdByUsername(loggedInUsername);
@@ -671,14 +724,19 @@ public class ClientHandler implements Runnable {
                 }
             }
 
-            boolean ok = itemDAO.updateItem(itemId, name, description, startPrice, endTime);
+            String description = (p.description != null) ? p.description.trim() : "";
+            boolean ok = itemDAO.updateItem(p.itemId, p.name.trim(), description,
+                    p.startingPrice, p.endTime);
             if (ok) {
-                sendMessage("SUCCESS:Đã cập nhật sản phẩm #" + itemId);
+                sendMessage("SUCCESS:Đã cập nhật sản phẩm #" + p.itemId);
+                System.out.printf("[HANDLER] %s cập nhật item #%d: %s%n",
+                        loggedInUsername, p.itemId, p.name.trim());
             } else {
                 sendMessage("FAIL:Không thể sửa. Phiên có thể đã RUNNING hoặc không tồn tại.");
             }
-        } catch (NumberFormatException e) {
-            sendMessage("FAIL:Dữ liệu số không hợp lệ");
+        } catch (com.google.gson.JsonSyntaxException e) {
+            sendMessage("FAIL:JSON không hợp lệ. Format: UPDATE_ITEM:{\"itemId\":5,\"name\":\"...\","
+                    + "\"description\":\"...\",\"startingPrice\":150.0,\"endTime\":1748000000000}");
         }
     }
 
@@ -734,6 +792,12 @@ public class ClientHandler implements Runnable {
     private void handleGetMyItems() {
         if (loggedInUsername == null) {
             sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        // FIX: Chỉ Seller và Admin mới có danh sách sản phẩm của mình.
+        // Trước đây BIDDER cũng gọi được lệnh này — không có ý nghĩa nghiệp vụ.
+        if (!"SELLER".equals(loggedInRole) && !"ADMIN".equals(loggedInRole)) {
+            sendMessage("FAIL:Chỉ Seller hoặc Admin mới có danh sách sản phẩm đăng bán");
             return;
         }
         int sellerId = userDAO.getUserIdByUsername(loggedInUsername);
@@ -842,6 +906,28 @@ public class ClientHandler implements Runnable {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    // =========================================================================
+    // INNER PAYLOAD CLASSES — dùng cho Gson deserialize JSON từ client
+    // =========================================================================
+
+    /** Payload cho ADD_ITEM */
+    private static class AddItemPayload {
+        String name;
+        String description;
+        double startingPrice;
+        long   endTime;
+        String category;   // ELECTRONICS | ART | VEHICLE (tuỳ chọn, mặc định ELECTRONICS)
+    }
+
+    /** Payload cho UPDATE_ITEM */
+    private static class UpdateItemPayload {
+        int    itemId;
+        String name;
+        String description;
+        double startingPrice;
+        long   endTime;
     }
 
     private static class PlaceBidPayload {

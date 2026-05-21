@@ -15,10 +15,10 @@ import java.util.concurrent.TimeUnit;
 
 public class AuctionServer {
 
-    private int port;
-    private List<ClientHandler> connectedClients = new CopyOnWriteArrayList<>();
-    private ExecutorService pool = Executors.newFixedThreadPool(50);
-    private AuctionService auctionService;
+    private final int port;
+    private final List<ClientHandler> connectedClients = new CopyOnWriteArrayList<>();
+    private final ExecutorService pool = Executors.newFixedThreadPool(50);
+    private final AuctionService auctionService;
 
     // FIX: đưa serverSocket thành field để shutdown() có thể đóng nó.
     // Trước đây serverSocket nằm trong try-with-resources của start() nên
