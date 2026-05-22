@@ -28,21 +28,25 @@ public class CreateItemController {
     // ------------------------------------------------------------------
     // FXML fields có sẵn trong CreateItem.fxml
     // ------------------------------------------------------------------
-    @FXML private TextField  txtName;
-    @FXML private TextField  txtPrice;
-    @FXML private DatePicker datePickerEnd;
-    @FXML private TextField  txtTimeEnd;
+    @FXML
+    private TextField txtName;
+    @FXML
+    private TextField txtPrice;
+    @FXML
+    private DatePicker datePickerEnd;
+    @FXML
+    private TextField txtTimeEnd;
 
     // ------------------------------------------------------------------
     // FXML fields CHỜ thành viên FXML thêm vào — KHÔNG dùng @FXML để
     // tránh warning "never assigned". Sẽ luôn là null cho đến khi FXML
     // được cập nhật; code bên dưới xử lý null-safe.
     // ------------------------------------------------------------------
-    private TextArea      txtDescription; // sẽ được inject sau khi FXML có fx:id="txtDescription"
+    private TextArea txtDescription; // sẽ được inject sau khi FXML có fx:id="txtDescription"
     private ComboBox<String> cmbCategory; // sẽ được inject sau khi FXML có fx:id="cmbCategory"
 
-    private final NavigationUtils navUtils      = new NavigationUtils();
-    private final ClientService   clientService = new ClientService();
+    private final NavigationUtils navUtils = new NavigationUtils();
+    private final ClientService clientService = new ClientService();
 
     // ------------------------------------------------------------------
     // Khởi tạo giá trị mặc định (chạy sau khi FXML load xong)
@@ -62,12 +66,12 @@ public class CreateItemController {
     @FXML
     public void handleCreate(ActionEvent event) {
         // 1. Lấy dữ liệu từ form
-        String name        = txtName.getText().trim();
+        String name = txtName.getText().trim();
         String description = (txtDescription != null) ? txtDescription.getText().trim() : "";
-        String priceStr    = txtPrice.getText().trim();
-        var    date        = datePickerEnd.getValue();
-        String timeStr     = txtTimeEnd.getText().trim();
-        String category    = (cmbCategory != null && cmbCategory.getValue() != null)
+        String priceStr = txtPrice.getText().trim();
+        var date = datePickerEnd.getValue();
+        String timeStr = txtTimeEnd.getText().trim();
+        String category = (cmbCategory != null && cmbCategory.getValue() != null)
                 ? cmbCategory.getValue()
                 : "ELECTRONICS";
 
