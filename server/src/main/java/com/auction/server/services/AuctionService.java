@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -147,8 +148,20 @@ public class AuctionService {
         currentItem.setCurrentHighestBidder(username);
         auctionServer.broadcastToItemWatchers(itemId, new Message("BID_UPDATE", gson.toJson(currentItem)));
 
-        // Kích hoạt auto-bid ngay sau khi có bid mới
-        triggerAutoBids(itemId, username, bidAmount, auctionServer);
+        // Kích hoạt auto-bid ASYNC — không block luồng ClientHandler chờ đợi.
+        // Lý do: triggerAutoBids có thể chạy tới MAX_AUTO_ROUNDS=50 vòng,
+        // mỗi vòng là 1 lần gọi DB (~50-200ms) → tổng cộng vài giây.
+        // Nếu gọi đồng bộ ở đây, client phải chờ toàn bộ chuỗi auto-bid
+        // mới nhận được phản hồi "SUCCESS" cho bid của chính mình.
+        // Giải pháp: dispatch sang ForkJoinPool.commonPool() (giống handleAutoBid).
+        // Kết quả từng vòng auto-bid vẫn được broadcast đến watcher qua BID_UPDATE.
+        CompletableFuture.runAsync(() ->
+                        triggerAutoBids(itemId, username, bidAmount, auctionServer))
+                .exceptionally(ex -> {
+                    System.err.println("[SERVICE] Lỗi async triggerAutoBids item #"
+                            + itemId + ": " + ex.getMessage());
+                    return null;
+                });
     }
 
     // =========================================================================
@@ -311,7 +324,25 @@ public class AuctionService {
     // DỌN DẸP khi Server tắt
     // =========================================================================
     public void shutdown() {
+        // Bước 1: Yêu cầu scheduler dừng nhận task mới.
         scheduler.shutdown();
+
+        // Bước 2: Chờ task đang chạy (refreshAuctionsStatus) hoàn thành.
+        // Quan trọng: phải chờ TRƯỚC khi xóa autoBids/itemLocks và TRƯỚC khi
+        // AuctionServer đóng DB pool. Nếu không, refreshAuctionsStatus đang
+        // gọi itemDAO giữa chừng sẽ gặp SQLException vì pool đã bị đóng.
+        try {
+            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                // Hết 5 giây mà task vẫn chưa xong → ép dừng ngay
+                scheduler.shutdownNow();
+                System.out.println("[SERVICE] Ép dừng scheduler sau 5 giây chờ.");
+            }
+        } catch (InterruptedException e) {
+            scheduler.shutdownNow();
+            Thread.currentThread().interrupt(); // khôi phục trạng thái interrupt
+        }
+
+        // Bước 3: Dọn dẹp bộ nhớ sau khi scheduler đã thực sự dừng
         autoBids.clear();
         itemLocks.clear();
         System.out.println("[SERVICE] AuctionService đã dừng.");
