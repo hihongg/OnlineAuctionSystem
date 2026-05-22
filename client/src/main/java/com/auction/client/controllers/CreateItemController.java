@@ -14,38 +14,42 @@ import java.time.format.DateTimeFormatter;
 /**
  * Controller màn hình "Đăng sản phẩm đấu giá" (Seller).
  *
- * ĐÃ CẬP NHẬT: Gửi ADD_ITEM lên server theo format JSON mới thay vì
- * format cũ dùng ':' làm delimiter (bị lỗi khi name/description chứa ':').
- *
- * Format gửi đi:
- *   ADD_ITEM:{"name":"...","description":"...","startingPrice":100.0,"endTime":1748000000000,"category":"ELECTRONICS"}
+ * Gửi ADD_ITEM lên server theo format JSON để tránh bug delimiter ':'.
+ * Format: ADD_ITEM:{"name":"...","description":"...","startingPrice":100.0,"endTime":1748000000000,"category":"ELECTRONICS"}
  *
  * LƯU Ý cho thành viên phụ trách FXML (CreateItem.fxml):
- *   Cần thêm 2 control vào form:
- *     1. TextArea (fx:id="txtDescription") — Mô tả sản phẩm
- *     2. ComboBox<String> (fx:id="cmbCategory") — Loại sản phẩm
- *        Items: ELECTRONICS, ART, VEHICLE
+ *   Khi sẵn sàng, hãy thêm 2 control vào form:
+ *     1. TextArea   (fx:id="txtDescription") — Mô tả sản phẩm
+ *     2. ComboBox   (fx:id="cmbCategory")    — Items: ELECTRONICS, ART, VEHICLE
+ *   Cho đến lúc đó, description = "" và category = "ELECTRONICS" được dùng mặc định.
  */
 public class CreateItemController {
 
     // ------------------------------------------------------------------
-    // FXML fields — phải khớp với fx:id trong CreateItem.fxml
+    // FXML fields có sẵn trong CreateItem.fxml
     // ------------------------------------------------------------------
-    @FXML private TextField    txtName;
-    @FXML private TextArea     txtDescription;   // ← MỚI: cần thêm vào FXML
-    @FXML private TextField    txtPrice;
-    @FXML private DatePicker   datePickerEnd;
-    @FXML private TextField    txtTimeEnd;
-    @FXML private ComboBox<String> cmbCategory;  // ← MỚI: cần thêm vào FXML
+    @FXML private TextField  txtName;
+    @FXML private TextField  txtPrice;
+    @FXML private DatePicker datePickerEnd;
+    @FXML private TextField  txtTimeEnd;
 
-    private final NavigationUtils navUtils     = new NavigationUtils();
+    // ------------------------------------------------------------------
+    // FXML fields CHỜ thành viên FXML thêm vào — KHÔNG dùng @FXML để
+    // tránh warning "never assigned". Sẽ luôn là null cho đến khi FXML
+    // được cập nhật; code bên dưới xử lý null-safe.
+    // ------------------------------------------------------------------
+    private TextArea      txtDescription; // sẽ được inject sau khi FXML có fx:id="txtDescription"
+    private ComboBox<String> cmbCategory; // sẽ được inject sau khi FXML có fx:id="cmbCategory"
+
+    private final NavigationUtils navUtils      = new NavigationUtils();
     private final ClientService   clientService = new ClientService();
 
     // ------------------------------------------------------------------
-    // Khởi tạo giá trị mặc định cho ComboBox category
+    // Khởi tạo giá trị mặc định (chạy sau khi FXML load xong)
     // ------------------------------------------------------------------
     @FXML
     public void initialize() {
+        // Chỉ setup khi FXML đã có ComboBox
         if (cmbCategory != null) {
             cmbCategory.getItems().addAll("ELECTRONICS", "ART", "VEHICLE");
             cmbCategory.setValue("ELECTRONICS");
@@ -99,16 +103,13 @@ public class CreateItemController {
             return;
         }
 
-        // 3. Chuyển LocalDateTime → milliseconds (epoch) để gửi lên server
+        // 3. Chuyển LocalDateTime → milliseconds
         long endTimeMs = endDateTime
                 .atZone(ZoneId.systemDefault())
                 .toInstant()
                 .toEpochMilli();
 
-        // 4. Tạo JSON payload — dùng String.format để tránh dùng thư viện ngoài
-        //    (Gson đã có sẵn ở server, client dùng string build đơn giản)
-        //
-        //    LƯU Ý: escape dấu '"' và '\' trong name/description để JSON hợp lệ.
+        // 4. Tạo JSON payload — escape ký tự đặc biệt để JSON không bị vỡ
         String jsonPayload = String.format(
                 "{\"name\":\"%s\",\"description\":\"%s\",\"startingPrice\":%.2f,\"endTime\":%d,\"category\":\"%s\"}",
                 escapeJson(name),
@@ -118,9 +119,8 @@ public class CreateItemController {
                 category
         );
 
-        // 5. Gửi lên server
-        String request  = "ADD_ITEM:" + jsonPayload;
-        String response = clientService.sendRequest(request);
+        // 5. Gửi lên server và xử lý response
+        String response = clientService.sendRequest("ADD_ITEM:" + jsonPayload);
 
         if (response == null || response.equals("CONNECTION_ERROR")) {
             showAlert(Alert.AlertType.ERROR, "Lỗi kết nối", "Không thể kết nối tới máy chủ. Thử lại sau.");
@@ -128,14 +128,16 @@ public class CreateItemController {
         }
 
         if (response.startsWith("SUCCESS")) {
-            showAlert(Alert.AlertType.INFORMATION, "Thành công", "Sản phẩm đã được đăng bán!\n" + response);
+            showAlert(Alert.AlertType.INFORMATION, "Thành công", "Sản phẩm đã được đăng bán!");
+            // FIX lỗi "Unhandled exception": switchScene() ném checked Exception
+            // → phải bọc trong try-catch.
             try {
                 navUtils.switchScene(event, "/MainDashboard.fxml", "Auction Dashboard");
             } catch (Exception e) {
-                showAlert(Alert.AlertType.ERROR, "Lỗi điều hướng", e.getMessage());
+                showAlert(Alert.AlertType.ERROR, "Lỗi điều hướng",
+                        "Không thể chuyển màn hình: " + e.getMessage());
             }
         } else {
-            // Server trả về "FAIL:<lý do>"
             String reason = response.startsWith("FAIL:") ? response.substring(5) : response;
             showAlert(Alert.AlertType.ERROR, "Không thể đăng bán", reason);
         }
@@ -149,22 +151,22 @@ public class CreateItemController {
         try {
             navUtils.switchScene(event, "/MainDashboard.fxml", "Auction Dashboard");
         } catch (Exception e) {
-            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Lỗi điều hướng",
+                    "Không thể chuyển màn hình: " + e.getMessage());
         }
     }
 
     // ------------------------------------------------------------------
-    // HELPER: escape ký tự đặc biệt trong JSON string
-    // Quan trọng: nếu name chứa dấu '"' hoặc '\' → JSON bị vỡ cấu trúc
+    // HELPER: escape ký tự đặc biệt trong JSON string value
     // ------------------------------------------------------------------
     private String escapeJson(String input) {
         if (input == null) return "";
         return input
-                .replace("\\", "\\\\")   // backslash trước
-                .replace("\"", "\\\"")   // double quote
-                .replace("\n", "\\n")    // newline
-                .replace("\r", "\\r")    // carriage return
-                .replace("\t", "\\t");   // tab
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 
     // ------------------------------------------------------------------
