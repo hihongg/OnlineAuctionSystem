@@ -14,7 +14,7 @@
 
         <Label text="Login to Auction" style="-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: white;"/>
 
-        <TextField fx:id="txtEmail" promptText="Email Address"
+        <TextField fx:id="txtUsername" promptText="Username"
                    style="-fx-pref-height: 40px; -fx-background-radius: 5px;"/>
 
         <PasswordField fx:id="txtPassword" promptText="Password"
