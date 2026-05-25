@@ -16,6 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 public class AuctionService {
 
@@ -54,6 +56,47 @@ public class AuctionService {
     //     KHÔNG giữ trong khi gọi DB.
     // =========================================================================
     private final ConcurrentHashMap<Integer, Object> itemLocks = new ConcurrentHashMap<>();
+
+    // =========================================================================
+    // DEPOSIT REQUEST STORAGE
+    // Lưu yêu cầu nạp tiền của Bidder/Seller chờ Admin duyệt.
+    // Dùng in-memory (không cần thêm bảng DB).
+    // =========================================================================
+    private final ConcurrentHashMap<Integer, DepositRequest> depositRequests = new ConcurrentHashMap<>();
+    private final AtomicInteger depositIdCounter = new AtomicInteger(1);
+
+    /** Thêm yêu cầu nạp tiền mới, trả về ID của yêu cầu. */
+    public int addDepositRequest(String username, double amount) {
+        int id = depositIdCounter.getAndIncrement();
+        depositRequests.put(id, new DepositRequest(id, username, amount));
+        System.out.printf("[DEPOSIT] Yêu cầu #%d: %s muốn nạp $%.2f — chờ admin duyệt%n",
+                id, username, amount);
+        return id;
+    }
+
+    /** Lấy tất cả yêu cầu (admin dùng để hiển thị). */
+    public List<DepositRequest> getAllDepositRequests() {
+        return depositRequests.values().stream()
+                .sorted(Comparator.comparingLong(r -> r.createdAt))
+                .collect(Collectors.toList());
+    }
+
+    /** Lấy yêu cầu theo ID. */
+    public DepositRequest getDepositRequest(int id) {
+        return depositRequests.get(id);
+    }
+
+    /** Admin duyệt yêu cầu. */
+    public void approveDepositRequest(int id) {
+        DepositRequest req = depositRequests.get(id);
+        if (req != null) req.status = "APPROVED";
+    }
+
+    /** Admin từ chối yêu cầu. */
+    public void rejectDepositRequest(int id) {
+        DepositRequest req = depositRequests.get(id);
+        if (req != null) req.status = "REJECTED";
+    }
 
     /**
      * Trả về lock object cho một itemId cụ thể.
@@ -127,7 +170,7 @@ public class AuctionService {
     public List<Item> getActiveAuctions() {
         // getDashboardItems() trả về tất cả trừ CANCELED (kể cả FINISHED)
         // để Dashboard hiển thị kết quả phiên vừa kết thúc.
-        return itemDAO.getDashboardItems();
+        return itemDAO.getActiveItems();
     }
 
     // NOTE: placeBid() đã bị xóa (dead code).
@@ -375,6 +418,23 @@ public class AuctionService {
         TimeExtendedPayload(int itemId, long newEndTime) {
             this.itemId     = itemId;
             this.newEndTime = newEndTime;
+        }
+    }
+
+    /** Yêu cầu nạp tiền của Bidder/Seller gửi lên Admin. */
+    public static class DepositRequest {
+        public int    id;
+        public String username;
+        public double amount;
+        public String status;    // PENDING | APPROVED | REJECTED
+        public long   createdAt;
+
+        DepositRequest(int id, String username, double amount) {
+            this.id        = id;
+            this.username  = username;
+            this.amount    = amount;
+            this.status    = "PENDING";
+            this.createdAt = System.currentTimeMillis();
         }
     }
 }

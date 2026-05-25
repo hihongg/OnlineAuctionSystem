@@ -10,6 +10,7 @@ import javafx.fxml.Initializable;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
+import javafx.scene.control.Button;
 import javafx.scene.control.TextField;
 import javafx.stage.Stage;
 
@@ -34,6 +35,9 @@ public class WalletController implements Initializable {
     @FXML public Label     lblBalance;
     @FXML public Label     lblUsername;
     @FXML public Label     lblMessage;
+    @FXML public Label     lblDepositTitle;
+    @FXML public Label     lblDepositNote;
+    @FXML public Button    btnDeposit;
     @FXML public TextField txtAmount;
 
     // =========================================================================
@@ -49,6 +53,17 @@ public class WalletController implements Initializable {
             if (lblBalance != null) lblBalance.setText("$0.00");
             if (lblMessage != null) lblMessage.setText("");
             loadBalance();
+
+            // Điều chỉnh UI theo vai trò
+            boolean isAdmin = "ADMIN".equals(ClientService.currentRole);
+            if (lblDepositTitle != null)
+                lblDepositTitle.setText(isAdmin ? "Nạp tiền vào ví (trực tiếp)" : "Gửi yêu cầu nạp tiền");
+            if (lblDepositNote != null)
+                lblDepositNote.setText(isAdmin
+                        ? "Với tư cách Admin, tiền sẽ được cộng ngay vào ví."
+                        : "Yêu cầu sẽ được gửi đến Admin để xem xét và phê duyệt.");
+            if (btnDeposit != null)
+                btnDeposit.setText(isAdmin ? "Nạp tiền ngay" : "Gửi yêu cầu");
         } catch (Exception e) {
             System.err.println("[WalletController] Lỗi khởi tạo: " + e.getMessage());
             e.printStackTrace();
@@ -126,24 +141,36 @@ public class WalletController implements Initializable {
 
     private void doDeposit(double amount) {
         if (amount <= 0)       { setMessage("⚠ Số tiền phải lớn hơn 0.", false); return; }
-        if (amount > 100_000)  { setMessage("⚠ Mỗi lần nạp tối đa $100,000.", false); return; }
+        if (amount > 100_000)  { setMessage("⚠ Mỗi lần tối đa $100,000.", false); return; }
+
+        boolean isAdmin = "ADMIN".equals(ClientService.currentRole);
+        String command = isAdmin ? ("ADMIN_DEPOSIT:" + amount) : ("DEPOSIT_REQUEST:" + amount);
         setMessage("⏳ Đang xử lý...", true);
+
         Task<String> task = new Task<String>() {
             @Override protected String call() throws Exception {
-                return ClientService.sendRequest("DEPOSIT:" + amount);
+                return ClientService.sendRequest(command);
             }
         };
         task.setOnSucceeded(e -> {
             String res = task.getValue();
             Platform.runLater(() -> {
                 if (res != null && res.startsWith("SUCCESS:")) {
-                    String nb = res.substring("SUCCESS:".length());
-                    if (lblBalance != null) lblBalance.setText("$" + formatAmount(nb));
-                    if (txtAmount  != null) txtAmount.clear();
-                    setMessage("✅ Nạp $" + String.format("%.2f", amount)
-                            + " thành công! Số dư mới: $" + formatAmount(nb), true);
+                    String payload = res.substring("SUCCESS:".length());
+                    if (isAdmin) {
+                        // Admin: payload là số dư mới
+                        if (lblBalance != null) lblBalance.setText("$" + formatAmount(payload));
+                        if (txtAmount  != null) txtAmount.clear();
+                        setMessage("✅ Nạp $" + String.format("%.2f", amount)
+                                + " thành công! Số dư mới: $" + formatAmount(payload), true);
+                    } else {
+                        // Bidder/Seller: payload là thông báo xác nhận
+                        if (txtAmount != null) txtAmount.clear();
+                        setMessage("✅ " + payload, true);
+                    }
                 } else {
-                    String reason = (res != null && res.startsWith("FAIL:")) ? res.substring(5) : "Lỗi không xác định";
+                    String reason = (res != null && res.startsWith("FAIL:"))
+                            ? res.substring(5) : "Lỗi không xác định";
                     setMessage("❌ " + reason, false);
                 }
             });

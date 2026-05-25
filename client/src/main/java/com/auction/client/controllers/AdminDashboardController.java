@@ -21,18 +21,23 @@ import javafx.scene.control.*;
 import javafx.stage.Stage;
 
 import java.net.URL;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.ResourceBundle;
 
 /**
  * Controller màn hình Admin Panel.
  *
  * Chức năng:
- *   Tab 1 — Quản lý Người dùng: xem danh sách, đổi role, xóa tài khoản.
- *   Tab 2 — Quản lý Sản phẩm : xem tất cả item, đổi trạng thái, xóa.
+ *   Tab 1 — Quản lý Người dùng   : xem danh sách, đổi role, xóa tài khoản.
+ *   Tab 2 — Quản lý Sản phẩm    : xem tất cả item, đổi trạng thái, xóa.
+ *   Tab 3 — Yêu cầu Nạp tiền    : duyệt/từ chối deposit request,
+ *                                   điều chỉnh số dư thủ công cho bất kỳ user nào.
  *
- * Giao tiếp với server qua các lệnh:
+ * Giao tiếp với server:
  *   GET_ALL_USERS, DELETE_USER, UPDATE_USER_ROLE,
- *   GET_ALL_ITEMS, DELETE_ITEM, CHANGE_ITEM_STATUS
+ *   GET_ALL_ITEMS, DELETE_ITEM, CHANGE_ITEM_STATUS,
+ *   GET_DEPOSIT_REQUESTS, APPROVE_DEPOSIT, REJECT_DEPOSIT, ADJUST_BALANCE
  */
 public class AdminDashboardController implements Initializable {
 
@@ -59,8 +64,25 @@ public class AdminDashboardController implements Initializable {
     @FXML public ComboBox<String> cmbItemStatus;
     @FXML public Label lblItemMsg;
 
+    // ── Tab 3: Deposit Requests ──────────────────────────────────────
+    @FXML public TableView<ObservableList<String>>  tblDepositRequests;
+    @FXML public TableColumn<ObservableList<String>, String> colReqId;
+    @FXML public TableColumn<ObservableList<String>, String> colReqUsername;
+    @FXML public TableColumn<ObservableList<String>, String> colReqAmount;
+    @FXML public TableColumn<ObservableList<String>, String> colReqStatus;
+    @FXML public TableColumn<ObservableList<String>, String> colReqTime;
+    @FXML public Label lblPendingBadge;
+    @FXML public Label lblSelectedReq;
+    @FXML public Label lblDepositMsg;
+
+    // ── Tab 3: Adjust Balance ────────────────────────────────────────
+    @FXML public TextField txtAdjustUsername;
+    @FXML public TextField txtAdjustAmount;
+    @FXML public Label lblAdjustMsg;
+
     private final NavigationUtils navUtils = new NavigationUtils();
     private final Gson gson = new Gson();
+    private final SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
 
     // =========================================================================
     // KHỞI TẠO
@@ -71,19 +93,17 @@ public class AdminDashboardController implements Initializable {
             lblAdminName.setText("Logged in: " + ClientService.currentUsername);
         }
 
-        // Cài đặt ComboBox roles
         if (cmbNewRole != null) {
             cmbNewRole.getItems().addAll("BIDDER", "SELLER", "ADMIN");
             cmbNewRole.setValue("BIDDER");
         }
 
-        // Cài đặt ComboBox item statuses (theo Item.Status)
         if (cmbItemStatus != null) {
             cmbItemStatus.getItems().addAll("OPEN", "RUNNING", "FINISHED", "PAID", "CANCELED");
             cmbItemStatus.setValue("OPEN");
         }
 
-        // Bind cột cho bảng Users (server trả: [id, username, email, role, created_at, balance])
+        // Tab 1 — Users: [id, username, email, role, balance, created_at]
         bindColumn(colUserId,      0);
         bindColumn(colUsername,    1);
         bindColumn(colEmail,       2);
@@ -91,7 +111,7 @@ public class AdminDashboardController implements Initializable {
         bindColumn(colBalance,     4);
         bindColumn(colUserCreated, 5);
 
-        // Bind cột cho bảng Items
+        // Tab 2 — Items
         bindColumn(colItemId,       0);
         bindColumn(colItemName,     1);
         bindColumn(colItemCategory, 2);
@@ -99,9 +119,30 @@ public class AdminDashboardController implements Initializable {
         bindColumn(colItemStatus,   4);
         bindColumn(colSellerId,     5);
 
+        // Tab 3 — Deposit Requests: [id, username, amount, status, time]
+        bindColumn(colReqId,       0);
+        bindColumn(colReqUsername, 1);
+        bindColumn(colReqAmount,   2);
+        bindColumn(colReqStatus,   3);
+        bindColumn(colReqTime,     4);
+
+        // Khi chọn dòng trong bảng yêu cầu → hiển thị thông tin
+        if (tblDepositRequests != null) {
+            tblDepositRequests.getSelectionModel().selectedItemProperty()
+                    .addListener((obs, oldVal, newVal) -> {
+                        if (newVal != null && newVal.size() >= 4) {
+                            String info = String.format("YC #%s — %s yêu cầu nạp %s [%s]",
+                                    newVal.get(0), newVal.get(1),
+                                    newVal.get(2), newVal.get(3));
+                            if (lblSelectedReq != null) lblSelectedReq.setText(info);
+                        }
+                    });
+        }
+
         // Tải dữ liệu ngay khi mở
         handleLoadUsers();
         handleLoadItems();
+        handleLoadDepositRequests();
     }
 
     // =========================================================================
@@ -155,8 +196,6 @@ public class AdminDashboardController implements Initializable {
             setUserMsg("⚠ Vui lòng chọn role mới.", false);
             return;
         }
-
-        // Ngăn admin tự đổi role chính mình
         if (username.equals(ClientService.currentUsername)) {
             setUserMsg("⚠ Không thể tự đổi role của chính mình.", false);
             return;
@@ -165,10 +204,9 @@ public class AdminDashboardController implements Initializable {
         runInBackground("UPDATE_USER_ROLE:" + username + ":" + newRole, response -> {
             if (response != null && response.startsWith("SUCCESS")) {
                 setUserMsg("✅ Đã đổi role của '" + username + "' thành " + newRole + ".", true);
-                handleLoadUsers(); // refresh
+                handleLoadUsers();
             } else {
-                String reason = (response != null && response.startsWith("FAIL:"))
-                        ? response.substring(5) : "Lỗi không xác định";
+                String reason = parseFailReason(response);
                 setUserMsg("❌ " + reason, false);
             }
         });
@@ -182,13 +220,11 @@ public class AdminDashboardController implements Initializable {
             return;
         }
         String username = selected.get(1);
-
         if (username.equals(ClientService.currentUsername)) {
             setUserMsg("⚠ Không thể xóa tài khoản của chính mình.", false);
             return;
         }
 
-        // Xác nhận trước khi xóa
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
         confirm.setTitle("Xác nhận xóa");
         confirm.setHeaderText(null);
@@ -200,9 +236,7 @@ public class AdminDashboardController implements Initializable {
                         setUserMsg("✅ Đã xóa tài khoản '" + username + "'.", true);
                         handleLoadUsers();
                     } else {
-                        String reason = (response != null && response.startsWith("FAIL:"))
-                                ? response.substring(5) : "Lỗi không xác định";
-                        setUserMsg("❌ " + reason, false);
+                        setUserMsg("❌ " + parseFailReason(response), false);
                     }
                 });
             }
@@ -266,9 +300,7 @@ public class AdminDashboardController implements Initializable {
                 setItemMsg("✅ Đã đổi trạng thái item #" + itemId + " thành " + newStatus + ".", true);
                 handleLoadItems();
             } else {
-                String reason = (response != null && response.startsWith("FAIL:"))
-                        ? response.substring(5) : "Lỗi không xác định";
-                setItemMsg("❌ " + reason, false);
+                setItemMsg("❌ " + parseFailReason(response), false);
             }
         });
     }
@@ -284,7 +316,6 @@ public class AdminDashboardController implements Initializable {
         String itemName   = selected.size() > 1 ? selected.get(1) : "#" + itemId;
         String itemStatus = selected.size() > 4 ? selected.get(4) : "";
 
-        // Cảnh báo đặc biệt nếu phiên đang chạy
         String warningText = "RUNNING".equals(itemStatus)
                 ? "\n\n⚠ Phiên đang RUNNING! Tất cả người đang xem sẽ nhận thông báo hủy."
                 : "";
@@ -301,9 +332,129 @@ public class AdminDashboardController implements Initializable {
                         setItemMsg("✅ " + response.substring("SUCCESS:".length()), true);
                         handleLoadItems();
                     } else {
-                        String reason = (response != null && response.startsWith("FAIL:"))
-                                ? response.substring(5) : "Lỗi không xác định";
-                        setItemMsg("❌ " + reason, false);
+                        setItemMsg("❌ " + parseFailReason(response), false);
+                    }
+                });
+            }
+        });
+    }
+
+    @FXML
+    public void handleDeleteAllFinished() {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+        confirm.setTitle("Xác nhận xóa hàng loạt");
+        confirm.setHeaderText("Xóa tất cả sản phẩm đã kết thúc?");
+        confirm.setContentText("Thao tác này sẽ xóa VĨNH VIỄN toàn bộ sản phẩm có trạng thái\n"
+                + "FINISHED, PAID và CANCELED khỏi hệ thống.\n\n⚠ Không thể hoàn tác!");
+        confirm.showAndWait().ifPresent(btn -> {
+            if (btn == ButtonType.OK) {
+                runInBackground("ADMIN_DELETE_FINISHED", response -> {
+                    if (response != null && response.startsWith("SUCCESS")) {
+                        setItemMsg("✅ " + response.substring("SUCCESS:".length()), true);
+                        handleLoadItems();
+                    } else {
+                        setItemMsg("❌ " + parseFailReason(response), false);
+                    }
+                });
+            }
+        });
+    }
+
+    // =========================================================================
+    // TAB 3: YÊU CẦU NẠP TIỀN
+    // =========================================================================
+
+    /**
+     * Tải toàn bộ yêu cầu nạp tiền từ server (mọi trạng thái).
+     * Server trả JSON array, mỗi phần tử có: id, username, amount, status, createdAt (ms).
+     */
+    @FXML
+    public void handleLoadDepositRequests() {
+        runInBackground("GET_DEPOSIT_REQUESTS", response -> {
+            if (response == null || !response.startsWith("SUCCESS:")) {
+                setDepositMsg("❌ Không thể tải danh sách yêu cầu.", false);
+                return;
+            }
+            String json = response.substring("SUCCESS:".length());
+            ObservableList<ObservableList<String>> data = FXCollections.observableArrayList();
+            int pendingCount = 0;
+
+            try {
+                JsonArray arr = gson.fromJson(json, JsonArray.class);
+                for (JsonElement el : arr) {
+                    JsonObject obj = el.getAsJsonObject();
+                    String status   = safeGet(obj, "status");
+                    long   tsMillis = obj.has("createdAt") ? obj.get("createdAt").getAsLong() : 0;
+                    String timeStr  = tsMillis > 0 ? sdf.format(new Date(tsMillis)) : "";
+
+                    ObservableList<String> row = FXCollections.observableArrayList(
+                            safeGet(obj, "id"),
+                            safeGet(obj, "username"),
+                            "$" + String.format("%.2f", obj.has("amount") ? obj.get("amount").getAsDouble() : 0),
+                            status,
+                            timeStr
+                    );
+                    data.add(row);
+                    if ("PENDING".equals(status)) pendingCount++;
+                }
+
+                final int pending = pendingCount;
+                Platform.runLater(() -> {
+                    tblDepositRequests.setItems(data);
+                    // Badge đỏ hiển thị số yêu cầu chờ duyệt
+                    if (lblPendingBadge != null) {
+                        if (pending > 0) {
+                            lblPendingBadge.setText(pending + " chờ duyệt");
+                            lblPendingBadge.setVisible(true);
+                        } else {
+                            lblPendingBadge.setVisible(false);
+                        }
+                    }
+                    setDepositMsg("✅ Đã tải " + data.size() + " yêu cầu (" + pending + " đang chờ).", true);
+                });
+            } catch (Exception e) {
+                setDepositMsg("❌ Lỗi parse: " + e.getMessage(), false);
+            }
+        });
+    }
+
+    /**
+     * Admin duyệt yêu cầu đang được chọn trong bảng.
+     * Gửi lệnh APPROVE_DEPOSIT:<id> lên server.
+     * Server sẽ: nạp tiền vào ví user → đánh dấu request là APPROVED.
+     */
+    @FXML
+    public void handleApproveDeposit() {
+        ObservableList<String> selected = tblDepositRequests.getSelectionModel().getSelectedItem();
+        if (selected == null || selected.isEmpty()) {
+            setDepositMsg("⚠ Vui lòng chọn một yêu cầu từ bảng.", false);
+            return;
+        }
+
+        String reqId    = selected.get(0);
+        String username = selected.size() > 1 ? selected.get(1) : "?";
+        String amount   = selected.size() > 2 ? selected.get(2) : "?";
+        String status   = selected.size() > 3 ? selected.get(3) : "";
+
+        if (!"PENDING".equals(status)) {
+            setDepositMsg("⚠ Yêu cầu #" + reqId + " đã được xử lý (" + status + ").", false);
+            return;
+        }
+
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+        confirm.setTitle("Xác nhận duyệt");
+        confirm.setHeaderText("Duyệt yêu cầu nạp tiền #" + reqId);
+        confirm.setContentText("Nạp " + amount + " vào ví của " + username + "?\n\nThao tác không thể hoàn tác.");
+        confirm.showAndWait().ifPresent(btn -> {
+            if (btn == ButtonType.OK) {
+                runInBackground("APPROVE_DEPOSIT:" + reqId, response -> {
+                    if (response != null && response.startsWith("SUCCESS:")) {
+                        String msg = response.substring("SUCCESS:".length());
+                        setDepositMsg("✅ " + msg, true);
+                        handleLoadDepositRequests(); // refresh bảng
+                        handleLoadUsers();           // cập nhật số dư trong Tab 1
+                    } else {
+                        setDepositMsg("❌ " + parseFailReason(response), false);
                     }
                 });
             }
@@ -311,30 +462,118 @@ public class AdminDashboardController implements Initializable {
     }
 
     /**
-     * Xóa hàng loạt tất cả sản phẩm đã kết thúc (FINISHED / PAID / CANCELED).
-     * Chỉ Admin mới dùng được.
+     * Admin từ chối yêu cầu đang được chọn.
+     * Gửi lệnh REJECT_DEPOSIT:<id> lên server.
      */
     @FXML
-    public void handleDeleteAllFinished() {
+    public void handleRejectDeposit() {
+        ObservableList<String> selected = tblDepositRequests.getSelectionModel().getSelectedItem();
+        if (selected == null || selected.isEmpty()) {
+            setDepositMsg("⚠ Vui lòng chọn một yêu cầu từ bảng.", false);
+            return;
+        }
+
+        String reqId    = selected.get(0);
+        String username = selected.size() > 1 ? selected.get(1) : "?";
+        String status   = selected.size() > 3 ? selected.get(3) : "";
+
+        if (!"PENDING".equals(status)) {
+            setDepositMsg("⚠ Yêu cầu #" + reqId + " đã được xử lý (" + status + ").", false);
+            return;
+        }
+
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
-        confirm.setTitle("Xác nhận xóa hàng loạt");
-        confirm.setHeaderText("Xóa tất cả sản phẩm đã kết thúc?");
-        confirm.setContentText("Thao tác này sẽ xóa VĨNH VIỄN toàn bộ sản phẩm có trạng thái\n"
-                + "FINISHED, PAID và CANCELED khỏi hệ thống.\n\n"
-                + "⚠ Không thể hoàn tác!");
+        confirm.setTitle("Xác nhận từ chối");
+        confirm.setHeaderText("Từ chối yêu cầu #" + reqId + " của " + username);
+        confirm.setContentText("Người dùng sẽ không nhận được tiền. Xác nhận từ chối?");
         confirm.showAndWait().ifPresent(btn -> {
             if (btn == ButtonType.OK) {
-                runInBackground("ADMIN_DELETE_FINISHED", response -> {
+                runInBackground("REJECT_DEPOSIT:" + reqId, response -> {
                     if (response != null && response.startsWith("SUCCESS")) {
-                        setItemMsg("✅ " + response.substring("SUCCESS:".length()), true);
-                        handleLoadItems(); // refresh bảng
+                        setDepositMsg("✅ Đã từ chối yêu cầu #" + reqId + " của " + username + ".", true);
+                        handleLoadDepositRequests();
                     } else {
-                        String reason = (response != null && response.startsWith("FAIL:"))
-                                ? response.substring(5) : "Lỗi không xác định";
-                        setItemMsg("❌ " + reason, false);
+                        setDepositMsg("❌ " + parseFailReason(response), false);
                     }
                 });
             }
+        });
+    }
+
+    /**
+     * Admin điều chỉnh số dư thủ công cho một user.
+     * Gửi lệnh ADJUST_BALANCE:<username>:<newBalance> lên server.
+     * Dùng setBalance (ghi đè, không cộng thêm).
+     */
+    @FXML
+    public void handleAdjustBalance() {
+        String username = txtAdjustUsername.getText().trim();
+        String amountStr = txtAdjustAmount.getText().trim();
+
+        if (username.isEmpty()) {
+            setAdjustMsg("⚠ Vui lòng nhập username.", false);
+            return;
+        }
+        if (amountStr.isEmpty()) {
+            setAdjustMsg("⚠ Vui lòng nhập số dư mới.", false);
+            return;
+        }
+
+        double amount;
+        try {
+            amount = Double.parseDouble(amountStr);
+            if (amount < 0) {
+                setAdjustMsg("⚠ Số dư không được âm.", false);
+                return;
+            }
+        } catch (NumberFormatException e) {
+            setAdjustMsg("⚠ Số dư không hợp lệ: " + amountStr, false);
+            return;
+        }
+
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+        confirm.setTitle("Xác nhận điều chỉnh số dư");
+        confirm.setHeaderText("Đặt số dư của '" + username + "'");
+        confirm.setContentText(String.format(
+                "Số dư mới sẽ được đặt thành $%,.2f\n\n"
+                        + "⚠ Đây là thao tác GHI ĐÈ (không cộng thêm).", amount));
+        confirm.showAndWait().ifPresent(btn -> {
+            if (btn == ButtonType.OK) {
+                runInBackground("ADJUST_BALANCE:" + username + ":" + amount, response -> {
+                    if (response != null && response.startsWith("SUCCESS:")) {
+                        String msg = response.substring("SUCCESS:".length());
+                        setAdjustMsg("✅ " + msg, true);
+                        Platform.runLater(() -> {
+                            txtAdjustUsername.clear();
+                            txtAdjustAmount.clear();
+                        });
+                        handleLoadUsers(); // làm mới bảng người dùng để hiện số dư mới
+                    } else {
+                        setAdjustMsg("❌ " + parseFailReason(response), false);
+                    }
+                });
+            }
+        });
+    }
+
+    /**
+     * Điền username và số dư hiện tại từ dòng đang chọn trong bảng Người dùng (Tab 1)
+     * vào form Điều chỉnh số dư để admin sửa nhanh.
+     */
+    @FXML
+    public void handleFillFromSelected() {
+        ObservableList<String> selected = tblUsers.getSelectionModel().getSelectedItem();
+        if (selected == null || selected.size() < 5) {
+            setAdjustMsg("⚠ Hãy chọn một người dùng trong Tab 'Quản lý Người dùng' trước.", false);
+            return;
+        }
+        String username     = selected.get(1);
+        String balanceRaw   = selected.get(4).replace("$", "").trim(); // bỏ ký hiệu $
+        Platform.runLater(() -> {
+            txtAdjustUsername.setText(username);
+            txtAdjustAmount.setText(balanceRaw);
+            setAdjustMsg("ℹ Đã điền thông tin của '" + username
+                    + "'. Hãy sửa số dư và nhấn 'Cập nhật'.", true);
         });
     }
 
@@ -352,11 +591,40 @@ public class AdminDashboardController implements Initializable {
     }
 
     // =========================================================================
+    // MỞ MÀN HÌNH VÍ TIỀN
+    // =========================================================================
+    @FXML
+    public void handleWallet(ActionEvent event) {
+        try {
+            URL walletUrl = getClass().getResource("/Wallet.fxml");
+            if (walletUrl == null) {
+                showAlert("Lỗi", "Không tìm thấy file Wallet.fxml.");
+                return;
+            }
+            WalletController walletController = new WalletController();
+            FXMLLoader loader = new FXMLLoader(walletUrl);
+            loader.setController(walletController);
+            Parent root = loader.load();
+            Stage stage = (Stage) ((javafx.scene.Node) event.getSource()).getScene().getWindow();
+            stage.setTitle("Ví của tôi");
+            javafx.scene.Scene currentScene = stage.getScene();
+            if (currentScene != null) {
+                currentScene.setRoot(root);
+            } else {
+                stage.setScene(new Scene(root));
+            }
+            stage.show();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            showAlert("Lỗi mở Ví", "Không thể mở màn hình Ví:\n" + ex.getMessage());
+        }
+    }
+
+    // =========================================================================
     // HELPERS
     // =========================================================================
 
-    /** Chạy lệnh server trong background thread, callback trả về trên background thread.
-     *  UI updates phải dùng Platform.runLater() bên trong callback. */
+    /** Chạy lệnh server trong background thread, callback trả về trên background thread. */
     private void runInBackground(String command, java.util.function.Consumer<String> callback) {
         Task<String> task = new Task<>() {
             @Override
@@ -380,6 +648,13 @@ public class AdminDashboardController implements Initializable {
         });
     }
 
+    /** Lấy lý do lỗi từ response server. */
+    private String parseFailReason(String response) {
+        if (response == null) return "Không nhận được phản hồi từ server.";
+        if (response.startsWith("FAIL:")) return response.substring(5);
+        return "Lỗi không xác định.";
+    }
+
     private void setUserMsg(String msg, boolean success) {
         Platform.runLater(() -> {
             lblUserMsg.setText(msg);
@@ -396,13 +671,30 @@ public class AdminDashboardController implements Initializable {
         });
     }
 
+    private void setDepositMsg(String msg, boolean success) {
+        Platform.runLater(() -> {
+            if (lblDepositMsg == null) return;
+            lblDepositMsg.setText(msg);
+            lblDepositMsg.setStyle("-fx-font-size: 13px; -fx-font-style: italic; -fx-text-fill: "
+                    + (success ? "#27ae60;" : "#e74c3c;"));
+        });
+    }
+
+    private void setAdjustMsg(String msg, boolean success) {
+        Platform.runLater(() -> {
+            if (lblAdjustMsg == null) return;
+            lblAdjustMsg.setText(msg);
+            lblAdjustMsg.setStyle("-fx-font-size: 13px; -fx-font-style: italic; -fx-text-fill: "
+                    + (success ? "#27ae60;" : "#e74c3c;"));
+        });
+    }
+
     /** Đọc field từ JsonObject, trả "" nếu null/không tồn tại. */
     private String safeGet(JsonObject obj, String key) {
         JsonElement el = obj.get(key);
         return (el == null || el.isJsonNull()) ? "" : el.getAsString();
     }
 
-    /** Hiển thị hộp thoại thông báo lỗi. */
     private void showAlert(String title, String message) {
         Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.ERROR);
@@ -412,36 +704,4 @@ public class AdminDashboardController implements Initializable {
             alert.showAndWait();
         });
     }
-
-    // =========================================================================
-    // MỞ MÀN HÌNH VÍ TIỀN
-    // =========================================================================
-    @FXML
-    public void handleWallet(ActionEvent event) {
-        try {
-            URL walletUrl = getClass().getResource("/Wallet.fxml");
-            if (walletUrl == null) {
-                showAlert("Lỗi", "Không tìm thấy file Wallet.fxml.");
-                return;
-            }
-            com.auction.client.controllers.WalletController walletController =
-                    new com.auction.client.controllers.WalletController();
-            FXMLLoader loader = new FXMLLoader(walletUrl);
-            loader.setController(walletController);
-            Parent root = loader.load();
-            Stage stage = (Stage) ((javafx.scene.Node) event.getSource()).getScene().getWindow();
-            stage.setTitle("Ví của tôi");
-            javafx.scene.Scene currentScene = stage.getScene();
-            if (currentScene != null) {
-                currentScene.setRoot(root);
-            } else {
-                stage.setScene(new javafx.scene.Scene(root));
-            }
-            stage.show();
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            showAlert("Lỗi mở Ví", "Không thể mở màn hình Ví:\n" + ex.getMessage());
-        }
-    }
-
 }

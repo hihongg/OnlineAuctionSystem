@@ -295,6 +295,32 @@ public class UserDAO {
     }
 
     // =========================================================================
+    // 10. VÍ TIỀN — ĐẶT SỐ DƯ TRỰC TIẾP (Admin dùng)
+    //
+    // Cho phép Admin điều chỉnh số dư về một giá trị cụ thể (không cộng thêm).
+    // amount >= 0; trả true nếu thành công.
+    // =========================================================================
+    public boolean setBalance(String username, double amount) {
+        if (amount < 0) {
+            System.err.println("[UserDAO] setBalance: số tiền không được âm");
+            return false;
+        }
+        String sql = "UPDATE users SET balance = ? WHERE username = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setDouble(1, amount);
+            pstmt.setString(2, username);
+            boolean ok = pstmt.executeUpdate() > 0;
+            if (ok) System.out.printf("[UserDAO] Admin đặt số dư '%s' = $%.2f%n", username, amount);
+            return ok;
+        } catch (SQLException e) {
+            System.err.println("[UserDAO] setBalance lỗi: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // =========================================================================
     // HELPER — Hash mật khẩu bằng SHA-256
     // =========================================================================
     static String hashPassword(String password) {

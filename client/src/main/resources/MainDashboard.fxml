@@ -32,6 +32,14 @@
                        -fx-font-size: 13; -fx-font-weight: bold;
                        -fx-padding: 8 16 8 16; -fx-background-radius: 20; -fx-cursor: hand;"/>
 
+        <!-- Nút Giỏ hàng — chỉ hiển thị khi currentRole = BIDDER -->
+        <Button fx:id="btnWonItems" text="🛒 Giỏ hàng"
+                onAction="#handleWonItems"
+                visible="false" managed="false"
+                style="-fx-background-color: #e67e22; -fx-text-fill: white;
+                       -fx-font-size: 13; -fx-font-weight: bold;
+                       -fx-padding: 8 16 8 16; -fx-background-radius: 20; -fx-cursor: hand;"/>
+
         <Button text="➕ Đăng bán sản phẩm" onAction="#handleCreateItem"
                 style="-fx-background-color: #3665F3; -fx-text-fill: white;
                        -fx-font-size: 14; -fx-font-weight: bold;
@@ -49,6 +57,12 @@
                           -fx-background-radius: 25; -fx-border-radius: 25;
                           -fx-border-color: #3665F3; -fx-border-width: 1.5;
                           -fx-background-color: white;"/>
+        <Button text="🔄 Làm mới" onAction="#handleRefresh"
+                style="-fx-background-color: white; -fx-text-fill: #3665F3;
+                       -fx-font-size: 13; -fx-font-weight: bold;
+                       -fx-padding: 10 22 10 22; -fx-background-radius: 25;
+                       -fx-border-radius: 25; -fx-border-color: #3665F3;
+                       -fx-border-width: 1.5; -fx-cursor: hand;"/>
     </HBox>
 
     <!-- ── Item grid ───────────────────────────────────────────────── -->

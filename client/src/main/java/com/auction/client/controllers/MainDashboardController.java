@@ -35,6 +35,7 @@ public class MainDashboardController implements Initializable {
     @FXML public Label     lblWelcome;
     @FXML public Button    btnAdminPanel;
     @FXML public Button    btnWallet;
+    @FXML public Button    btnWonItems;
 
     private final NavigationUtils navUtils = new NavigationUtils();
     private final Gson gson = new Gson();
@@ -56,6 +57,11 @@ public class MainDashboardController implements Initializable {
             if (btnWallet != null && ("BIDDER".equals(ClientService.currentRole) || "ADMIN".equals(ClientService.currentRole))) {
                 btnWallet.setVisible(true);
                 btnWallet.setManaged(true);
+            }
+
+            if (btnWonItems != null && "BIDDER".equals(ClientService.currentRole)) {
+                btnWonItems.setVisible(true);
+                btnWonItems.setManaged(true);
             }
 
             loadDataFromServer();
@@ -178,38 +184,20 @@ public class MainDashboardController implements Initializable {
     @FXML
     public void handleWallet(ActionEvent event) {
         try {
-            URL walletUrl = getClass().getResource("/Wallet.fxml");
-            if (walletUrl == null) {
-                showAlert("Lỗi", "Không tìm thấy file Wallet.fxml.\nKiểm tra lại resources folder.");
-                return;
-            }
-
-            WalletController walletController = new WalletController();
-
-            FXMLLoader loader = new FXMLLoader(walletUrl);
-            loader.setController(walletController);   // <-- set controller trực tiếp, không qua reflection
-            Parent root = loader.load();
-
-            Stage stage = (Stage) ((javafx.scene.Node) event.getSource()).getScene().getWindow();
-            stage.setTitle("Ví của tôi");
-            Scene currentScene = stage.getScene();
-            if (currentScene != null) {
-                currentScene.setRoot(root);
-            } else {
-                stage.setScene(new Scene(root));
-            }
-            stage.show();
-
+            navUtils.switchScene(event, "/Wallet.fxml", "Ví của tôi");
         } catch (Exception ex) {
             ex.printStackTrace();
-            StringBuilder sb = new StringBuilder("Không thể mở màn hình Ví:\n");
-            Throwable cause = ex;
-            while (cause != null) {
-                sb.append(cause.getClass().getSimpleName())
-                        .append(": ").append(cause.getMessage()).append("\n");
-                cause = cause.getCause();
-            }
-            Platform.runLater(() -> showAlert("Lỗi mở Ví", sb.toString()));
+            showAlert("Lỗi mở Ví", "Không thể mở màn hình Ví:\n" + ex.getMessage());
+        }
+    }
+
+    @FXML
+    public void handleWonItems(ActionEvent event) {
+        try {
+            navUtils.switchScene(event, "/WonItems.fxml", "Giỏ hàng đấu giá");
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            showAlert("Lỗi mở Giỏ hàng", "Không thể mở màn hình Giỏ hàng:\n" + ex.getMessage());
         }
     }
 

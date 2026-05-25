@@ -190,6 +190,9 @@ public class ClientHandler implements Runnable {
             case "GET_MY_ITEMS":
                 handleGetMyItems();
                 break;
+            case "GET_WON_ITEMS":
+                handleGetWonItems();
+                break;
             case "AUTO_BID":
                 handleAutoBid(parts);
                 break;
@@ -201,6 +204,24 @@ public class ClientHandler implements Runnable {
                 break;
             case "DEPOSIT":
                 handleDeposit(parts);
+                break;
+            case "DEPOSIT_REQUEST":
+                handleDepositRequest(parts);
+                break;
+            case "ADMIN_DEPOSIT":
+                handleAdminDeposit(parts);
+                break;
+            case "GET_DEPOSIT_REQUESTS":
+                handleGetDepositRequests();
+                break;
+            case "APPROVE_DEPOSIT":
+                handleApproveDeposit(parts);
+                break;
+            case "REJECT_DEPOSIT":
+                handleRejectDeposit(parts);
+                break;
+            case "ADJUST_BALANCE":
+                handleAdjustBalance(parts);
                 break;
             default:
                 sendMessage("FAIL:Lệnh không hỗ trợ: " + action);
@@ -304,12 +325,10 @@ public class ClientHandler implements Runnable {
     // HANDLER: GET_ITEMS
     // =========================================================================
     private void handleGetItems() {
-        // getDashboardItems() trả về tất cả trừ CANCELED (kể cả FINISHED)
-        // để người dùng thấy kết quả phiên vừa kết thúc trên dashboard.
-        List<Item> items = itemDAO.getDashboardItems();
+        List<Item> items = itemDAO.getActiveItems();
         String json = gson.toJson(items);
         sendMessage("SUCCESS:" + json);
-        System.out.println("[HANDLER] Gửi " + items.size() + " sản phẩm cho client.");
+        System.out.println("[HANDLER] Gửi " + items.size() + " sản phẩm RUNNING cho client.");
     }
 
     // =========================================================================
@@ -866,6 +885,25 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
+    // HANDLER: GET_WON_ITEMS — Giỏ hàng của Bidder
+    // Trả về các sản phẩm mà bidder đã đấu giá thắng (FINISHED / PAID)
+    // =========================================================================
+    private void handleGetWonItems() {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        if (!"BIDDER".equals(loggedInRole) && !"ADMIN".equals(loggedInRole)) {
+            sendMessage("FAIL:Chỉ Bidder mới có giỏ hàng đấu giá");
+            return;
+        }
+        List<Item> wonItems = itemDAO.getWonItems(loggedInUsername);
+        System.out.printf("[HANDLER] %s yêu cầu giỏ hàng → %d sản phẩm thắng%n",
+                loggedInUsername, wonItems.size());
+        sendMessage("SUCCESS:" + gson.toJson(wonItems));
+    }
+
+    // =========================================================================
     // HANDLER: AUTO_BID
     // =========================================================================
     private void handleAutoBid(String[] parts) {
@@ -995,6 +1033,146 @@ public class ClientHandler implements Runnable {
                 System.out.println("[HANDLER] '" + loggedInUsername
                         + "' nạp $" + amount + " → số dư: $" + newBalance);
             }
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:Số tiền không hợp lệ");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: DEPOSIT_REQUEST — Bidder/Seller gửi yêu cầu nạp tiền cho Admin
+    // Format: DEPOSIT_REQUEST:<amount>
+    // =========================================================================
+    private void handleDepositRequest(String[] parts) {
+        if (loggedInUsername == null) { sendMessage("FAIL:Bạn chưa đăng nhập"); return; }
+        if ("ADMIN".equals(loggedInRole)) {
+            sendMessage("FAIL:Admin hãy dùng nút nạp trực tiếp trong ví"); return;
+        }
+        if (parts.length < 2 || parts[1].trim().isEmpty()) {
+            sendMessage("FAIL:Thiếu số tiền. Format: DEPOSIT_REQUEST:<amount>"); return;
+        }
+        try {
+            double amount = Double.parseDouble(parts[1].trim());
+            if (amount <= 0)       { sendMessage("FAIL:Số tiền phải lớn hơn 0"); return; }
+            if (amount > 100_000)  { sendMessage("FAIL:Mỗi yêu cầu tối đa $100,000"); return; }
+            int id = auctionService.addDepositRequest(loggedInUsername, amount);
+            sendMessage("SUCCESS:Yêu cầu nạp $" + String.format("%.2f", amount)
+                    + " đã gửi đến Admin. Mã yêu cầu: #" + id);
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:Số tiền không hợp lệ");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: ADMIN_DEPOSIT — Admin nạp tiền trực tiếp vào ví của chính mình
+    // Format: ADMIN_DEPOSIT:<amount>
+    // =========================================================================
+    private void handleAdminDeposit(String[] parts) {
+        if (loggedInUsername == null) { sendMessage("FAIL:Bạn chưa đăng nhập"); return; }
+        if (!"ADMIN".equals(loggedInRole)) {
+            sendMessage("FAIL:Chỉ Admin mới được dùng lệnh này"); return;
+        }
+        if (parts.length < 2) { sendMessage("FAIL:Thiếu số tiền"); return; }
+        try {
+            double amount = Double.parseDouble(parts[1].trim());
+            if (amount <= 0)      { sendMessage("FAIL:Số tiền phải lớn hơn 0"); return; }
+            if (amount > 100_000) { sendMessage("FAIL:Mỗi lần nạp tối đa $100,000"); return; }
+            double newBalance = userDAO.deposit(loggedInUsername, amount);
+            if (newBalance < 0) { sendMessage("FAIL:Nạp tiền thất bại"); return; }
+            sendMessage(String.format("SUCCESS:%.2f", newBalance));
+            System.out.printf("[HANDLER] Admin '%s' tự nạp $%.2f → số dư: $%.2f%n",
+                    loggedInUsername, amount, newBalance);
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:Số tiền không hợp lệ");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: GET_DEPOSIT_REQUESTS — Admin lấy danh sách yêu cầu nạp tiền
+    // =========================================================================
+    private void handleGetDepositRequests() {
+        if (loggedInUsername == null) { sendMessage("FAIL:Bạn chưa đăng nhập"); return; }
+        if (!"ADMIN".equals(loggedInRole)) {
+            sendMessage("FAIL:Chỉ Admin mới xem được danh sách yêu cầu"); return;
+        }
+        sendMessage("SUCCESS:" + gson.toJson(auctionService.getAllDepositRequests()));
+    }
+
+    // =========================================================================
+    // HANDLER: APPROVE_DEPOSIT — Admin duyệt yêu cầu nạp tiền
+    // Format: APPROVE_DEPOSIT:<requestId>
+    // =========================================================================
+    private void handleApproveDeposit(String[] parts) {
+        if (loggedInUsername == null) { sendMessage("FAIL:Bạn chưa đăng nhập"); return; }
+        if (!"ADMIN".equals(loggedInRole)) {
+            sendMessage("FAIL:Chỉ Admin mới duyệt được yêu cầu"); return;
+        }
+        if (parts.length < 2) { sendMessage("FAIL:Thiếu request ID"); return; }
+        try {
+            int reqId = Integer.parseInt(parts[1].trim());
+            com.auction.server.services.AuctionService.DepositRequest req =
+                    auctionService.getDepositRequest(reqId);
+            if (req == null) { sendMessage("FAIL:Không tìm thấy yêu cầu #" + reqId); return; }
+            if (!"PENDING".equals(req.status)) {
+                sendMessage("FAIL:Yêu cầu #" + reqId + " đã được xử lý (" + req.status + ")"); return;
+            }
+            double newBalance = userDAO.deposit(req.username, req.amount);
+            if (newBalance < 0) { sendMessage("FAIL:Nạp tiền thất bại cho " + req.username); return; }
+            auctionService.approveDepositRequest(reqId);
+            sendMessage(String.format("SUCCESS:Đã duyệt! Nạp $%.2f cho %s. Số dư mới: $%.2f",
+                    req.amount, req.username, newBalance));
+            System.out.printf("[HANDLER] Admin duyệt yêu cầu #%d: +$%.2f cho %s%n",
+                    reqId, req.amount, req.username);
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:ID không hợp lệ");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: REJECT_DEPOSIT — Admin từ chối yêu cầu nạp tiền
+    // Format: REJECT_DEPOSIT:<requestId>
+    // =========================================================================
+    private void handleRejectDeposit(String[] parts) {
+        if (loggedInUsername == null) { sendMessage("FAIL:Bạn chưa đăng nhập"); return; }
+        if (!"ADMIN".equals(loggedInRole)) {
+            sendMessage("FAIL:Chỉ Admin mới từ chối được yêu cầu"); return;
+        }
+        if (parts.length < 2) { sendMessage("FAIL:Thiếu request ID"); return; }
+        try {
+            int reqId = Integer.parseInt(parts[1].trim());
+            com.auction.server.services.AuctionService.DepositRequest req =
+                    auctionService.getDepositRequest(reqId);
+            if (req == null) { sendMessage("FAIL:Không tìm thấy yêu cầu #" + reqId); return; }
+            if (!"PENDING".equals(req.status)) {
+                sendMessage("FAIL:Yêu cầu #" + reqId + " đã được xử lý (" + req.status + ")"); return;
+            }
+            auctionService.rejectDepositRequest(reqId);
+            sendMessage("SUCCESS:Đã từ chối yêu cầu #" + reqId + " của " + req.username);
+            System.out.printf("[HANDLER] Admin từ chối yêu cầu #%d của %s%n", reqId, req.username);
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:ID không hợp lệ");
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: ADJUST_BALANCE — Admin điều chỉnh số dư của bất kỳ user nào
+    // Format: ADJUST_BALANCE:<username>:<newBalance>
+    // =========================================================================
+    private void handleAdjustBalance(String[] parts) {
+        if (loggedInUsername == null) { sendMessage("FAIL:Bạn chưa đăng nhập"); return; }
+        if (!"ADMIN".equals(loggedInRole)) {
+            sendMessage("FAIL:Chỉ Admin mới điều chỉnh được số dư"); return;
+        }
+        if (parts.length < 3) {
+            sendMessage("FAIL:Format: ADJUST_BALANCE:<username>:<newBalance>"); return;
+        }
+        try {
+            String targetUser = parts[1].trim();
+            double newBalance = Double.parseDouble(parts[2].trim());
+            if (newBalance < 0) { sendMessage("FAIL:Số dư không được âm"); return; }
+            boolean ok = userDAO.setBalance(targetUser, newBalance);
+            if (!ok) { sendMessage("FAIL:Không tìm thấy user '" + targetUser + "'"); return; }
+            sendMessage(String.format("SUCCESS:Đã đặt số dư của %s = $%.2f", targetUser, newBalance));
+            System.out.printf("[HANDLER] Admin đặt số dư %s = $%.2f%n", targetUser, newBalance);
         } catch (NumberFormatException e) {
             sendMessage("FAIL:Số tiền không hợp lệ");
         }

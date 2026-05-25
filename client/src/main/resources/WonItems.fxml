@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.image.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox prefHeight="700.0" prefWidth="1000.0" spacing="20"
+      xmlns="http://javafx.com/javafx/17"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.auction.client.controllers.WonItemsController"
+      style="-fx-padding: 30; -fx-background-color: #F4F6F9;">
+
+    <!-- ── Header ──────────────────────────────────────────────────── -->
+    <HBox alignment="CENTER_LEFT" spacing="15"
+          style="-fx-background-color: white; -fx-padding: 15; -fx-background-radius: 10;">
+        <Button text="← Quay lại" onAction="#handleBack"
+                style="-fx-background-color: transparent; -fx-text-fill: #3665F3;
+                       -fx-font-size: 13; -fx-font-weight: bold; -fx-cursor: hand;"/>
+        <Label text="🛒 Giỏ hàng đấu giá"
+               style="-fx-font-size: 24; -fx-font-weight: bold; -fx-text-fill: #0064D2;"/>
+        <Region HBox.hgrow="ALWAYS"/>
+        <Label fx:id="lblCount" text=""
+               style="-fx-font-size: 13; -fx-text-fill: #7f8c8d;"/>
+        <Button text="🔄 Làm mới" onAction="#handleRefresh"
+                style="-fx-background-color: white; -fx-text-fill: #3665F3;
+                       -fx-font-size: 13; -fx-font-weight: bold;
+                       -fx-padding: 8 18 8 18; -fx-background-radius: 20;
+                       -fx-border-radius: 20; -fx-border-color: #3665F3;
+                       -fx-border-width: 1.5; -fx-cursor: hand;"/>
+    </HBox>
+
+    <!-- ── Tổng tiền đã chi ─────────────────────────────────────────── -->
+    <HBox alignment="CENTER_LEFT" spacing="10"
+          style="-fx-background-color: #eaf2ff; -fx-padding: 12 20 12 20;
+                 -fx-background-radius: 10;">
+        <Label text="💰 Tổng tiền đã đấu giá thắng:"
+               style="-fx-font-size: 14; -fx-text-fill: #2c3e50; -fx-font-weight: bold;"/>
+        <Label fx:id="lblTotalSpent" text="0,00"
+               style="-fx-font-size: 18; -fx-font-weight: bold; -fx-text-fill: #e74c3c;"/>
+    </HBox>
+
+    <!-- ── Danh sách sản phẩm thắng ────────────────────────────────── -->
+    <ScrollPane fitToWidth="true" VBox.vgrow="ALWAYS"
+                style="-fx-background-color: transparent; -fx-background-insets: 0;">
+        <VBox fx:id="wonList" spacing="12">
+            <padding>
+                <Insets top="4" right="4" bottom="4" left="4"/>
+            </padding>
+        </VBox>
+    </ScrollPane>
+
+    <!-- ── Trạng thái trống ─────────────────────────────────────────── -->
+    <VBox fx:id="emptyState" alignment="CENTER" spacing="10"
+          visible="false" managed="false"
+          style="-fx-padding: 60;">
+        <Label text="🛒" style="-fx-font-size: 60;"/>
+        <Label text="Bạn chưa thắng phiên đấu giá nào"
+               style="-fx-font-size: 18; -fx-text-fill: #95a5a6; -fx-font-weight: bold;"/>
+        <Label text="Hãy tham gia đặt giá để có cơ hội sở hữu sản phẩm yêu thích!"
+               style="-fx-font-size: 13; -fx-text-fill: #bdc3c7;"/>
+    </VBox>
+
+</VBox>
