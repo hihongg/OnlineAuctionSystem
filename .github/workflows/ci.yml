@@ -53,20 +53,28 @@ jobs:
         run: |
           mysql -h 127.0.0.1 -u root -ptestpass < sql/auction_db.sql
 
-      # 4. Build shared trước (server & client đều phụ thuộc vào shared)
+      # 4. Install root POM vào local Maven repository (-N = non-recursive,
+      #    chỉ install parent POM, không build các module con).
+      #    Bước này bắt buộc vì server/pom.xml khai báo <parent> trỏ về
+      #    com.auction:OnlineAuctionSystem:1.0-SNAPSHOT; nếu thiếu bước này
+      #    Maven sẽ báo "Could not find artifact ...pom" khi resolve dependency.
+      - name: Install root POM
+        run: mvn -N install -DskipTests -B
+
+      # 5. Build shared trước (server & client đều phụ thuộc vào shared)
       - name: Build shared module
         run: mvn -pl shared install -DskipTests -B
 
-      # 5. Build + chạy toàn bộ JUnit test phía server
+      # 6. Build + chạy toàn bộ JUnit test phía server
       #    (UserDAOTest, ItemDAOTest, BidDAOTest, UserDAOHashPasswordTest)
       - name: Build & test server
         run: mvn -pl server test -B
 
-      # 6. Build client (chỉ compile, không test vì cần màn hình để chạy JavaFX)
+      # 7. Build client (chỉ compile, không test vì cần màn hình để chạy JavaFX)
       - name: Build client (compile only)
         run: mvn -pl client compile -DskipTests -B
 
-      # 7. Tóm tắt kết quả test (hiển thị trong tab Summary của GitHub Actions)
+      # 8. Tóm tắt kết quả test (hiển thị trong tab Summary của GitHub Actions)
       - name: Publish test results
         if: always()
         uses: mikepenz/action-junit-report@v4
