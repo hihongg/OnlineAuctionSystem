@@ -2,28 +2,26 @@ package com.auction.client.controllers;
 
 import com.auction.client.utils.ClientService;
 import com.auction.client.utils.NavigationUtils;
+import javafx.application.Platform;
+import javafx.concurrent.Task;
 import javafx.fxml.FXML;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
-import javafx.scene.control.Alert;
 import javafx.event.ActionEvent;
 
 public class LoginController {
 
-    // ĐÃ SỬA: Đổi từ txtEmail sang txtUsername để khớp chính xác với FXML
-    @FXML private TextField txtUsername;
-    @FXML private PasswordField txtPassword;
+    @FXML public TextField     txtUsername;
+    @FXML public PasswordField txtPassword;
+    @FXML public PasswordField txtConfirmPassword;
+    @FXML public Button        btnLogin;
 
-    // Biến này có thể null nếu đang ở màn hình Login, nên không bắt buộc (không lỗi)
-    @FXML private PasswordField txtConfirmPassword;
+    private final NavigationUtils navUtils = new NavigationUtils();
 
-    // ĐÃ SỬA: Xóa bỏ dòng khởi tạo new ClientService() vì giờ ta dùng hàm Static
-    private NavigationUtils navUtils = new NavigationUtils();
-
-    // 1. XỬ LÝ KHI BẤM NÚT LOGIN (Ở màn hình Login)
     @FXML
     private void handleLogin(ActionEvent event) {
-        // ĐÃ SỬA: Lấy text từ txtUsername
         String username = txtUsername.getText().trim();
         String password = txtPassword.getText();
 
@@ -32,82 +30,118 @@ public class LoginController {
             return;
         }
 
-        // Gửi yêu cầu LOGIN lên Server
-        String requestMessage = "LOGIN:" + username + ":" + password;
+        if (btnLogin != null) btnLogin.setDisable(true);
 
-        // ĐÃ SỬA: Gọi phương thức static
-        String response = ClientService.sendRequest(requestMessage);
-
-        // ĐÃ SỬA: Kiểm tra startsWith vì Server sẽ trả về "SUCCESS:ADMIN" hoặc "SUCCESS:BIDDER"
-        if (response != null && response.startsWith("SUCCESS")) {
-            try {
-                navUtils.switchScene(event, "/MainDashboard.fxml", "Auction Dashboard");
-            } catch (Exception e) {
-                e.printStackTrace();
+        Task<String> task = new Task<>() {
+            @Override protected String call() {
+                return ClientService.sendRequest("LOGIN:" + username + ":" + password);
             }
-        } else if ("CONNECTION_ERROR".equals(response)) {
-            showAlert(Alert.AlertType.ERROR, "Lỗi kết nối", "Không thể kết nối đến máy chủ. Vui lòng thử lại sau.");
-        } else {
-            // Nếu Server trả về "FAIL" hoặc bất kỳ thứ gì khác
-            showAlert(Alert.AlertType.ERROR, "Sai thông tin", "Username hoặc mật khẩu không đúng!");
-        }
+        };
+
+        task.setOnSucceeded(e -> {
+            if (btnLogin != null) btnLogin.setDisable(false);
+            String response = task.getValue();
+            System.out.println("[Login] Server response: " + response);
+
+            if (response != null && response.startsWith("SUCCESS")) {
+                String[] parts = response.split(":", 2);
+                String role = (parts.length > 1 && !parts[1].isBlank()) ? parts[1].trim() : "BIDDER";
+                ClientService.currentUsername = username;
+                ClientService.currentRole     = role;
+                System.out.println("[Login] Đăng nhập thành công: " + username + " (" + role + ")");
+                try {
+                    navUtils.switchScene(event, "/MainDashboard.fxml", "Auction Dashboard");
+                } catch (Exception ex) {
+                    // Hiện lỗi thật ra màn hình thay vì im lặng
+                    ex.printStackTrace();
+                    showAlert(Alert.AlertType.ERROR, "Lỗi load giao diện",
+                            "Không thể mở Dashboard:\n" + ex.getMessage()
+                                    + (ex.getCause() != null ? "\nCause: " + ex.getCause().getMessage() : ""));
+                }
+            } else if ("CONNECTION_ERROR".equals(response)) {
+                showAlert(Alert.AlertType.ERROR, "Lỗi kết nối",
+                        "Không thể kết nối đến máy chủ.\nKiểm tra Server đã chạy chưa.");
+            } else {
+                showAlert(Alert.AlertType.ERROR, "Sai thông tin",
+                        "Username hoặc mật khẩu không đúng!\nServer trả về: " + response);
+            }
+        });
+
+        task.setOnFailed(e -> {
+            if (btnLogin != null) btnLogin.setDisable(false);
+            Throwable ex = task.getException();
+            ex.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Lỗi", "Lỗi không xác định: " + ex.getMessage());
+        });
+
+        new Thread(task).start();
     }
 
-    // 2. XỬ LÝ KHI BẤM NÚT SIGN UP (Ở màn hình Register)
     @FXML
     private void handleSignUp(ActionEvent event) {
-        // ĐÃ SỬA: Lấy text từ txtUsername
         String username = txtUsername.getText().trim();
         String password = txtPassword.getText();
-        String confirm = txtConfirmPassword.getText();
+        String confirm  = txtConfirmPassword != null ? txtConfirmPassword.getText() : "";
 
         if (username.isEmpty() || password.isEmpty() || confirm.isEmpty()) {
             showAlert(Alert.AlertType.WARNING, "Lỗi", "Vui lòng nhập đầy đủ thông tin!");
             return;
         }
-
         if (!password.equals(confirm)) {
             showAlert(Alert.AlertType.ERROR, "Lỗi", "Mật khẩu xác nhận không khớp!");
             return;
         }
 
-        // Gửi yêu cầu đăng ký lên Server
-        String response = ClientService.sendRequest("REGISTER:" + username + ":" + password);
+        Task<String> task = new Task<>() {
+            @Override protected String call() {
+                return ClientService.sendRequest("REGISTER:" + username + ":" + password);
+            }
+        };
 
-        // ĐÃ SỬA: Kiểm tra startsWith
-        if (response != null && response.startsWith("SUCCESS")) {
-            showAlert(Alert.AlertType.INFORMATION, "Thành công", "Tạo tài khoản thành công! Vui lòng đăng nhập.");
-            handleGoToLogin(event); // Trở về trang login
-        } else {
-            showAlert(Alert.AlertType.ERROR, "Thất bại", "Username đã tồn tại hoặc lỗi Server");
-        }
+        task.setOnSucceeded(e -> {
+            String response = task.getValue();
+            if (response != null && response.startsWith("SUCCESS")) {
+                showAlert(Alert.AlertType.INFORMATION, "Thành công",
+                        "Tạo tài khoản thành công!\nVui lòng đăng nhập.");
+                handleGoToLogin(event);
+            } else {
+                showAlert(Alert.AlertType.ERROR, "Thất bại",
+                        "Username đã tồn tại hoặc lỗi Server.\nServer trả về: " + response);
+            }
+        });
+
+        task.setOnFailed(e -> {
+            showAlert(Alert.AlertType.ERROR, "Lỗi", "Lỗi: " + task.getException().getMessage());
+        });
+
+        new Thread(task).start();
     }
 
-    // 3. ĐIỀU HƯỚNG TỪ LOGIN -> REGISTER
     @FXML
     private void handleGoToRegister(ActionEvent event) {
-        try {
-            navUtils.switchScene(event, "/RegisterView.fxml", "Create Account");
-        } catch (Exception e) {
+        try { navUtils.switchScene(event, "/RegisterView.fxml", "Create Account"); }
+        catch (Exception e) {
             e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Lỗi", e.getMessage());
         }
     }
 
-    // 4. ĐIỀU HƯỚNG TỪ REGISTER -> LOGIN
     @FXML
     private void handleGoToLogin(ActionEvent event) {
-        try {
-            navUtils.switchScene(event, "/LoginView.fxml", "Login");
-        } catch (Exception e) {
+        try { navUtils.switchScene(event, "/LoginView.fxml", "Login"); }
+        catch (Exception e) {
             e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Lỗi", e.getMessage());
         }
     }
 
     private void showAlert(Alert.AlertType type, String title, String content) {
-        Alert alert = new Alert(type);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(content);
-        alert.showAndWait();
+        Platform.runLater(() -> {
+            Alert alert = new Alert(type);
+            alert.setTitle(title);
+            alert.setHeaderText(null);
+            alert.setContentText(content);
+            alert.showAndWait();
+        });
     }
 }

@@ -14,7 +14,12 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Base64;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -68,21 +73,11 @@ public class ClientHandler implements Runnable {
     private final Gson gson = new Gson();
 
     // Lưu thông tin sau khi đăng nhập (username + role).
-    // FIX: cache role thay vì gọi userDAO.getUserInfo() cho mỗi lệnh —
-    // giảm ít nhất 8 query DB thừa mỗi phiên làm việc.
     private String loggedInUsername = null;
     private String loggedInRole     = null;
 
     /**
      * ID của item mà client đang theo dõi realtime (màn hình ItemDetail).
-     *
-     * - Được đặt bằng lệnh WATCH_ITEM:<itemId>
-     * - Được xóa (→ -1) bằng lệnh UNWATCH_ITEM hoặc khi client ngắt kết nối
-     * - AuctionServer.broadcastToItemWatchers() dùng field này để lọc
-     *
-     * Dùng volatile vì được đọc bởi thread khác (AuctionServer.broadcastToItemWatchers
-     * chạy trong thread của ClientHandler người đặt giá, nhưng đọc field này
-     * từ danh sách connectedClients — có thể là thread khác).
      */
     private volatile int watchedItemId = -1;
 
@@ -112,7 +107,8 @@ public class ClientHandler implements Runnable {
             String inputLine;
             while ((inputLine = in.readLine()) != null) {
                 System.out.println("[HANDLER] Nhận từ "
-                        + socket.getInetAddress() + ": " + inputLine);
+                        + socket.getInetAddress() + ": "
+                        + (inputLine.length() > 200 ? inputLine.substring(0, 200) + "...[truncated]" : inputLine));
                 handleRawMessage(inputLine.trim());
             }
         } catch (IOException e) {
@@ -124,23 +120,17 @@ public class ClientHandler implements Runnable {
 
     // =========================================================================
     // PHÂN LOẠI TIN NHẮN
-    // Hỗ trợ cả plain-text "ACTION:arg1:arg2" và JSON Message object
     // =========================================================================
     private void handleRawMessage(String raw) {
-        // Thử parse JSON trước (cho các message nâng cao sau này)
         if (raw.startsWith("{")) {
             try {
                 Message msg = Message.fromJson(raw);
                 handleJsonMessage(msg);
                 return;
             } catch (Exception ignored) {
-                // Không phải JSON hợp lệ → thử plain text
             }
         }
 
-        // Plain text protocol: "ACTION:arg1:arg2:..."
-        // split giới hạn 6 phần — đủ cho lệnh dài nhất (UPDATE_ITEM có 6 tham số).
-        // Không dùng split không giới hạn để tránh tấn công DoS bằng chuỗi quá nhiều ":"
         String[] parts = raw.split(":", 6);
         String action = parts[0].toUpperCase();
 
@@ -186,13 +176,16 @@ public class ClientHandler implements Runnable {
                 handleGetBidHistory(parts);
                 break;
             case "ADD_ITEM":
-                handleAddItem(parts);
+                handleAddItem(raw);
                 break;
             case "UPDATE_ITEM":
                 handleUpdateItem(parts);
                 break;
             case "DELETE_ITEM":
                 handleDeleteItem(parts);
+                break;
+            case "ADMIN_DELETE_FINISHED":
+                handleAdminDeleteFinished();
                 break;
             case "GET_MY_ITEMS":
                 handleGetMyItems();
@@ -202,6 +195,12 @@ public class ClientHandler implements Runnable {
                 break;
             case "CANCEL_AUTO_BID":
                 handleCancelAutoBid(parts);
+                break;
+            case "GET_BALANCE":
+                handleGetBalance();
+                break;
+            case "DEPOSIT":
+                handleDeposit(parts);
                 break;
             default:
                 sendMessage("FAIL:Lệnh không hỗ trợ: " + action);
@@ -402,6 +401,7 @@ public class ClientHandler implements Runnable {
             map.put("email",      u[2]);
             map.put("role",       u[3]);
             map.put("created_at", u[4]);
+            map.put("balance",    u[5]);
             result.add(map);
         }
         sendMessage("SUCCESS:" + gson.toJson(result));
@@ -547,18 +547,6 @@ public class ClientHandler implements Runnable {
 
     // =========================================================================
     // GỬI TIN NHẮN VỀ CLIENT
-    //
-    // FIX THREAD-SAFETY: synchronized vì sendMessage() được gọi từ 2 nguồn:
-    //   1. Handler thread (response trực tiếp sau lệnh của client)
-    //   2. Scheduler/broadcast thread (BID_UPDATE, AUCTION_ENDED từ AuctionServer)
-    //
-    // PrintWriter.println() KHÔNG phải thread-safe. Nếu hai thread cùng gọi
-    // out.println() cùng lúc, output có thể bị xen kẽ (interleave) và client
-    // nhận được dữ liệu lộn xộn không parse được.
-    //
-    // Dùng synchronized(this) thay vì ReentrantLock vì:
-    //   - Method chỉ có 1 thao tác đơn giản (println), không cần try/finally.
-    //   - Thời gian giữ lock cực ngắn (microseconds) → không gây contention đáng kể.
     // =========================================================================
     public synchronized void sendMessage(String message) {
         if (out != null) {
@@ -590,19 +578,15 @@ public class ClientHandler implements Runnable {
     // =========================================================================
     // HANDLER: ADD_ITEM
     //
-    // ĐÃ SỬA — chuyển sang JSON payload để tránh bug delimiter ':'.
+    // Nhận raw string thay vì parts[] vì payload JSON có thể chứa dấu ':'
+    // và Base64 ảnh rất dài (>6 phần khi split).
     //
-    // Format cũ (bị lỗi): ADD_ITEM:<name>:<description>:<price>:<endTime>[:<category>]
-    //   → Nếu name hoặc description chứa dấu ':', split(":") sẽ cắt nhầm.
-    //   Ví dụ: "ADD_ITEM:Laptop XPS:15:Mô tả:500.0:..." → parts[1]="Laptop XPS" ✗ (mất ":15")
-    //
-    // Format mới (đúng): ADD_ITEM:<jsonPayload>
-    //   Ví dụ: ADD_ITEM:{"name":"Laptop XPS:15","description":"Mô tả hay","startingPrice":500.0,"endTime":1748000000000,"category":"ELECTRONICS"}
-    //
-    // Client (CreateItemController) cần gửi theo format này. Gson parse an toàn
-    // vì JSON tự escape mọi ký tự đặc biệt bên trong chuỗi.
+    // Format: ADD_ITEM:<jsonPayload>
+    // JSON hỗ trợ thêm 2 field mới (tùy chọn):
+    //   "imageBase64" : chuỗi Base64 của file ảnh
+    //   "imageExt"    : phần mở rộng file ("jpg", "png", "gif")
     // =========================================================================
-    private void handleAddItem(String[] parts) {
+    private void handleAddItem(String raw) {
         if (loggedInUsername == null) {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
@@ -611,21 +595,19 @@ public class ClientHandler implements Runnable {
             sendMessage("FAIL:Chỉ Seller hoặc Admin mới được thêm sản phẩm");
             return;
         }
-        // parts[0] = "ADD_ITEM", phần JSON bắt đầu từ index 1 (sau dấu ':' đầu tiên).
-        // Dùng indexOf để lấy toàn bộ JSON kể cả khi JSON chứa dấu ':'.
-        int colonIdx = parts[0].length() + 1; // vị trí sau "ADD_ITEM:"
-        // Lấy raw string để tìm đúng vị trí — parts bị split rồi nên dùng cách khác:
-        // Ta sẽ ghép lại từ parts[1..] bằng ':' vì Gson parse toàn bộ chuỗi JSON.
-        if (parts.length < 2 || parts[1].trim().isEmpty()) {
-            sendMessage("FAIL:Format: ADD_ITEM:{\"name\":\"...\",\"description\":\"...\",\"startingPrice\":100.0,\"endTime\":1748000000000,\"category\":\"ELECTRONICS\"}");
+
+        // Lấy JSON sau "ADD_ITEM:" — dùng indexOf để không bị giới hạn bởi split limit
+        int colonIdx = raw.indexOf(':');
+        if (colonIdx < 0 || colonIdx == raw.length() - 1) {
+            sendMessage("FAIL:Format: ADD_ITEM:{\"name\":\"...\",\"startingPrice\":100.0,\"endTime\":1748000000000,\"category\":\"ELECTRONICS\"}");
             return;
         }
-
-        // Ghép lại phần JSON (có thể bị split do ':' bên trong JSON)
-        String jsonPayload = String.join(":", java.util.Arrays.copyOfRange(parts, 1, parts.length)).trim();
+        String jsonPayload = raw.substring(colonIdx + 1).trim();
 
         try {
             AddItemPayload p = gson.fromJson(jsonPayload, AddItemPayload.class);
+
+            // Validate các trường bắt buộc
             if (p.name == null || p.name.trim().isEmpty()) {
                 sendMessage("FAIL:Tên sản phẩm không được để trống");
                 return;
@@ -639,39 +621,70 @@ public class ClientHandler implements Runnable {
                 return;
             }
 
-            String category = (p.category != null && !p.category.trim().isEmpty())
-                    ? p.category.trim().toUpperCase()
-                    : "ELECTRONICS";
+            String category    = (p.category != null && !p.category.trim().isEmpty())
+                    ? p.category.trim().toUpperCase() : "ELECTRONICS";
             String description = (p.description != null) ? p.description.trim() : "";
-            int sellerId = userDAO.getUserIdByUsername(loggedInUsername);
+            int    sellerId    = userDAO.getUserIdByUsername(loggedInUsername);
 
             // Factory Method: tạo đúng subclass (Electronics / Art / Vehicle)
             Item newItem = ItemFactory.create(category, p.name.trim(), description,
                     p.startingPrice, p.endTime, sellerId);
+
+            // ── XỬ LÝ ẢNH BASE64 (MỚI) ───────────────────────────────────────
+            // Nếu client gửi kèm ảnh thì giải mã và lưu vào thư mục uploads/.
+            // Nếu không có ảnh (imageBase64 == null) thì bỏ qua — hoàn toàn tương thích ngược.
+            if (p.imageBase64 != null && !p.imageBase64.trim().isEmpty()) {
+                try {
+                    // Giải mã Base64 → bytes
+                    byte[] imageBytes = Base64.getDecoder().decode(p.imageBase64.trim());
+
+                    // Chỉ cho phép jpg, png, gif; mặc định jpg nếu không rõ
+                    String ext = (p.imageExt != null && p.imageExt.trim().matches("jpg|png|gif"))
+                            ? p.imageExt.trim() : "jpg";
+
+                    // Tạo thư mục uploads/ nếu chưa tồn tại
+                    Path uploadsDir = Paths.get("uploads");
+                    if (!Files.exists(uploadsDir)) {
+                        Files.createDirectories(uploadsDir);
+                    }
+
+                    // Đặt tên file bằng UUID để tránh trùng
+                    String fileName = UUID.randomUUID().toString() + "." + ext;
+                    Path   filePath = uploadsDir.resolve(fileName);
+                    Files.write(filePath, imageBytes);
+
+                    newItem.setImagePath("uploads/" + fileName);
+                    System.out.println("[HANDLER] Đã lưu ảnh: " + filePath.toAbsolutePath());
+
+                } catch (IllegalArgumentException e) {
+                    // Base64 không hợp lệ → bỏ qua ảnh, vẫn tạo item bình thường
+                    System.err.println("[HANDLER] Base64 ảnh không hợp lệ, bỏ qua: " + e.getMessage());
+                } catch (IOException e) {
+                    // Lỗi ghi file → bỏ qua ảnh, vẫn tạo item bình thường
+                    System.err.println("[HANDLER] Không thể lưu file ảnh, bỏ qua: " + e.getMessage());
+                }
+            }
+            // ─────────────────────────────────────────────────────────────────
+
             int newId = itemDAO.addItem(newItem);
 
             if (newId > 0) {
                 sendMessage("SUCCESS:Đã thêm sản phẩm #" + newId);
                 System.out.println("[HANDLER] " + loggedInUsername + " thêm item #" + newId
-                        + " [" + category + "]: " + p.name.trim());
+                        + " [" + category + "]: " + p.name.trim()
+                        + (newItem.getImagePath() != null ? " (có ảnh)" : ""));
             } else {
                 sendMessage("FAIL:Không thể thêm sản phẩm. Kiểm tra lại dữ liệu.");
             }
+
         } catch (com.google.gson.JsonSyntaxException e) {
-            sendMessage("FAIL:JSON không hợp lệ. Format: ADD_ITEM:{\"name\":\"...\",\"description\":\"...\","
+            sendMessage("FAIL:JSON không hợp lệ. Format: ADD_ITEM:{\"name\":\"...\","
                     + "\"startingPrice\":100.0,\"endTime\":1748000000000,\"category\":\"ELECTRONICS\"}");
         }
     }
 
     // =========================================================================
     // HANDLER: UPDATE_ITEM
-    //
-    // ĐÃ SỬA — chuyển sang JSON payload (cùng lý do với ADD_ITEM).
-    //
-    // Format mới: UPDATE_ITEM:<jsonPayload>
-    //   Ví dụ: UPDATE_ITEM:{"itemId":5,"name":"Tên mới: v2","description":"Mô tả","startingPrice":150.0,"endTime":1748000000000}
-    //
-    // SECURITY: Seller chỉ được sửa item của chính mình; Admin sửa bất kỳ item nào.
     // =========================================================================
     private void handleUpdateItem(String[] parts) {
         if (loggedInUsername == null) {
@@ -688,7 +701,6 @@ public class ClientHandler implements Runnable {
             return;
         }
 
-        // Ghép lại JSON (tương tự ADD_ITEM)
         String jsonPayload = String.join(":", java.util.Arrays.copyOfRange(parts, 1, parts.length)).trim();
 
         try {
@@ -710,7 +722,6 @@ public class ClientHandler implements Runnable {
                 return;
             }
 
-            // SECURITY: Seller chỉ được sửa item của chính mình.
             if ("SELLER".equals(loggedInRole)) {
                 Item target = itemDAO.getItemById(p.itemId);
                 if (target == null) {
@@ -742,7 +753,6 @@ public class ClientHandler implements Runnable {
 
     // =========================================================================
     // HANDLER: DELETE_ITEM
-    // SECURITY FIX: Seller chỉ được xóa item của chính mình.
     // =========================================================================
     private void handleDeleteItem(String[] parts) {
         if (loggedInUsername == null) {
@@ -760,19 +770,43 @@ public class ClientHandler implements Runnable {
         try {
             int itemId = Integer.parseInt(parts[1].trim());
 
-            // SECURITY FIX: Seller chỉ được xóa item của chính mình.
-            // Admin được xóa bất kỳ item nào.
-            if ("SELLER".equals(loggedInRole)) {
+            // ── ADMIN: force-delete bất kể trạng thái ──────────────────────
+            if ("ADMIN".equals(loggedInRole)) {
                 Item target = itemDAO.getItemById(itemId);
                 if (target == null) {
                     sendMessage("FAIL:Sản phẩm #" + itemId + " không tồn tại.");
                     return;
                 }
-                int myId = userDAO.getUserIdByUsername(loggedInUsername);
-                if (target.getSellerId() != myId) {
-                    sendMessage("FAIL:Bạn không có quyền xóa sản phẩm của người khác.");
-                    return;
+                // Nếu phiên đang RUNNING → thông báo cho tất cả client đang xem
+                if (target.getStatus() == Item.Status.RUNNING) {
+                    server.broadcastToItemWatchers(itemId,
+                            new Message("AUCTION_ENDED",
+                                    "Phiên đấu giá '" + target.getName()
+                                            + "' đã bị Admin xóa khỏi hệ thống."));
                 }
+                boolean ok = itemDAO.adminForceDeleteItem(itemId);
+                if (ok) {
+                    sendMessage("SUCCESS:Đã xóa sản phẩm #" + itemId
+                            + " (" + target.getName() + ")");
+                    System.out.println("[HANDLER] Admin '" + loggedInUsername
+                            + "' đã force-delete item #" + itemId
+                            + " (trạng thái: " + target.getStatus() + ")");
+                } else {
+                    sendMessage("FAIL:Không thể xóa sản phẩm #" + itemId);
+                }
+                return;
+            }
+
+            // ── SELLER: chỉ được xóa sản phẩm của mình, không xóa RUNNING ──
+            Item target = itemDAO.getItemById(itemId);
+            if (target == null) {
+                sendMessage("FAIL:Sản phẩm #" + itemId + " không tồn tại.");
+                return;
+            }
+            int myId = userDAO.getUserIdByUsername(loggedInUsername);
+            if (target.getSellerId() != myId) {
+                sendMessage("FAIL:Bạn không có quyền xóa sản phẩm của người khác.");
+                return;
             }
 
             boolean ok = itemDAO.deleteItem(itemId);
@@ -787,6 +821,28 @@ public class ClientHandler implements Runnable {
     }
 
     // =========================================================================
+    // HANDLER: ADMIN_DELETE_FINISHED — xóa hàng loạt sản phẩm đã kết thúc
+    // =========================================================================
+    private void handleAdminDeleteFinished() {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        if (!"ADMIN".equals(loggedInRole)) {
+            sendMessage("FAIL:Chỉ Admin mới có quyền xóa hàng loạt");
+            return;
+        }
+        int count = itemDAO.deleteAllFinishedItems();
+        if (count >= 0) {
+            sendMessage("SUCCESS:Đã xóa " + count + " sản phẩm đã kết thúc (FINISHED/PAID/CANCELED).");
+            System.out.println("[HANDLER] Admin '" + loggedInUsername
+                    + "' batch-deleted " + count + " finished items.");
+        } else {
+            sendMessage("FAIL:Lỗi khi xóa hàng loạt. Kiểm tra log server.");
+        }
+    }
+
+    // =========================================================================
     // HANDLER: GET_MY_ITEMS
     // =========================================================================
     private void handleGetMyItems() {
@@ -794,8 +850,6 @@ public class ClientHandler implements Runnable {
             sendMessage("FAIL:Bạn chưa đăng nhập");
             return;
         }
-        // FIX: Chỉ Seller và Admin mới có danh sách sản phẩm của mình.
-        // Trước đây BIDDER cũng gọi được lệnh này — không có ý nghĩa nghiệp vụ.
         if (!"SELLER".equals(loggedInRole) && !"ADMIN".equals(loggedInRole)) {
             sendMessage("FAIL:Chỉ Seller hoặc Admin mới có danh sách sản phẩm đăng bán");
             return;
@@ -855,12 +909,6 @@ public class ClientHandler implements Runnable {
 
         auctionService.registerAutoBid(itemId, loggedInUsername, maxBid, increment);
 
-        // Phản hồi client NGAY — không chờ triggerAutoBids hoàn thành.
-        // triggerAutoBids có thể chạy tới 50 vòng DB I/O (~50–200ms/vòng = vài giây).
-        // Nếu gọi đồng bộ, client sẽ bị treo cho đến khi toàn bộ chuỗi auto-bid xong.
-        // Giải pháp: dispatch sang ForkJoinPool.commonPool() (thread pool dùng chung của JVM).
-        // Kết quả từng vòng auto-bid vẫn được broadcast đến watcher qua sendMessage()
-        // như bình thường — client nhận realtime update qua BID_UPDATE, không cần chờ.
         sendMessage("SUCCESS:Đã đăng ký auto-bid thành công!");
 
         final String currentBidder = item.getCurrentHighestBidder();
@@ -896,6 +944,60 @@ public class ClientHandler implements Runnable {
         }
     }
 
+    // =========================================================================
+    // HANDLER: GET_BALANCE — lấy số dư ví của người dùng đang đăng nhập
+    // =========================================================================
+    private void handleGetBalance() {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        double balance = userDAO.getBalance(loggedInUsername);
+        if (balance < 0) {
+            sendMessage("FAIL:Không thể lấy số dư. Kiểm tra kết nối database.");
+        } else {
+            sendMessage(String.format("SUCCESS:%.2f", balance));
+        }
+    }
+
+    // =========================================================================
+    // HANDLER: DEPOSIT — nạp tiền vào ví
+    //
+    // Format: DEPOSIT:<amount>
+    // Giới hạn mỗi lần nạp: $1 – $100,000
+    // =========================================================================
+    private void handleDeposit(String[] parts) {
+        if (loggedInUsername == null) {
+            sendMessage("FAIL:Bạn chưa đăng nhập");
+            return;
+        }
+        if (parts.length < 2 || parts[1].trim().isEmpty()) {
+            sendMessage("FAIL:Thiếu số tiền. Format: DEPOSIT:<amount>");
+            return;
+        }
+        try {
+            double amount = Double.parseDouble(parts[1].trim());
+            if (amount <= 0) {
+                sendMessage("FAIL:Số tiền nạp phải lớn hơn 0");
+                return;
+            }
+            if (amount > 100_000) {
+                sendMessage("FAIL:Mỗi lần nạp tối đa $100,000");
+                return;
+            }
+            double newBalance = userDAO.deposit(loggedInUsername, amount);
+            if (newBalance < 0) {
+                sendMessage("FAIL:Nạp tiền thất bại. Thử lại sau.");
+            } else {
+                sendMessage(String.format("SUCCESS:%.2f", newBalance));
+                System.out.println("[HANDLER] '" + loggedInUsername
+                        + "' nạp $" + amount + " → số dư: $" + newBalance);
+            }
+        } catch (NumberFormatException e) {
+            sendMessage("FAIL:Số tiền không hợp lệ");
+        }
+    }
+
     private void closeConnections() {
         watchedItemId = -1;
         try {
@@ -918,7 +1020,9 @@ public class ClientHandler implements Runnable {
         String description;
         double startingPrice;
         long   endTime;
-        String category;   // ELECTRONICS | ART | VEHICLE (tuỳ chọn, mặc định ELECTRONICS)
+        String category;      // ELECTRONICS | ART | VEHICLE (tuỳ chọn, mặc định ELECTRONICS)
+        String imageBase64;   // MỚI: ảnh encode Base64 (null nếu không có ảnh)
+        String imageExt;      // MỚI: phần mở rộng file: "jpg", "png", "gif"
     }
 
     /** Payload cho UPDATE_ITEM */

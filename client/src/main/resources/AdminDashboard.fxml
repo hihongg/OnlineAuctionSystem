@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.geometry.Insets?>
+
+<!--
+    AdminDashboard.fxml — Màn hình quản trị hệ thống (Admin only)
+    Gồm 2 tab:
+      - Quản lý Người dùng: xem danh sách, đổi role, xóa
+      - Quản lý Sản phẩm : xem tất cả item, đổi trạng thái
+-->
+<VBox prefHeight="700.0" prefWidth="1050.0" spacing="0"
+      xmlns="http://javafx.com/javafx/17"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.auction.client.controllers.AdminDashboardController"
+      style="-fx-background-color: #F0F2F5;">
+
+    <!-- ── Header ──────────────────────────────────────────────────── -->
+    <HBox alignment="CENTER_LEFT" spacing="15"
+          style="-fx-background-color: #2c3e50; -fx-padding: 18 25 18 25;">
+        <Label text="⚙ Admin Panel"
+               style="-fx-font-size: 22; -fx-font-weight: bold; -fx-text-fill: white;"/>
+        <Region HBox.hgrow="ALWAYS"/>
+        <Label fx:id="lblAdminName"
+               style="-fx-font-size: 13; -fx-text-fill: #bdc3c7;"/>
+        <Button text="Ví của tôi" onAction="#handleWallet"
+                style="-fx-background-color: #27ae60; -fx-text-fill: white;
+                       -fx-font-weight: bold; -fx-padding: 7 18 7 18; -fx-background-radius: 6;
+                       -fx-cursor: hand;"/>
+        <Button text="&#x2B05; Dashboard" onAction="#handleBackToDashboard"
+                style="-fx-background-color: #3498db; -fx-text-fill: white;
+                       -fx-font-weight: bold; -fx-padding: 7 18 7 18; -fx-background-radius: 6;
+                       -fx-cursor: hand;"/>
+    </HBox>
+
+    <!-- ── TabPane ─────────────────────────────────────────────────── -->
+    <TabPane VBox.vgrow="ALWAYS" tabClosingPolicy="UNAVAILABLE"
+             style="-fx-background-color: #F0F2F5;">
+
+        <!-- ═══════════════════════════════════════════════════════════
+             TAB 1: QUẢN LÝ NGƯỜI DÙNG
+             ═══════════════════════════════════════════════════════════ -->
+        <Tab text="👥  Quản lý Người dùng">
+            <VBox spacing="15" style="-fx-padding: 20;">
+
+                <!-- Toolbar -->
+                <HBox alignment="CENTER_LEFT" spacing="12">
+                    <Label text="Danh sách tài khoản"
+                           style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Button text="🔄 Tải lại" onAction="#handleLoadUsers"
+                            style="-fx-background-color: #27ae60; -fx-text-fill: white;
+                                   -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6;
+                                   -fx-cursor: hand;"/>
+                </HBox>
+
+                <!-- TableView người dùng -->
+                <TableView fx:id="tblUsers" VBox.vgrow="ALWAYS"
+                           style="-fx-background-radius: 8; -fx-border-radius: 8;">
+                    <columns>
+                        <TableColumn fx:id="colUserId"       text="ID"       prefWidth="55"/>
+                        <TableColumn fx:id="colUsername"     text="Username" prefWidth="170"/>
+                        <TableColumn fx:id="colEmail"        text="Email"    prefWidth="210"/>
+                        <TableColumn fx:id="colRole"         text="Role"     prefWidth="100"/>
+                        <TableColumn fx:id="colBalance"      text="Số dư ($)" prefWidth="110"/>
+                        <TableColumn fx:id="colUserCreated"  text="Ngày tạo" prefWidth="150"/>
+                    </columns>
+                    <placeholder>
+                        <Label text="Chưa có dữ liệu. Nhấn 'Tải lại' để cập nhật."
+                               style="-fx-text-fill: #95a5a6;"/>
+                    </placeholder>
+                </TableView>
+
+                <!-- Khu vực thao tác -->
+                <HBox spacing="12" alignment="CENTER_LEFT"
+                      style="-fx-background-color: white; -fx-padding: 15;
+                             -fx-background-radius: 8;
+                             -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.07), 5, 0, 0, 2);">
+                    <Label text="Đổi Role:"
+                           style="-fx-font-weight: bold; -fx-font-size: 14;"/>
+                    <ComboBox fx:id="cmbNewRole" prefWidth="150"
+                              style="-fx-font-size: 13;">
+                        <!-- Items set trong initialize() -->
+                    </ComboBox>
+                    <Button text="✏ Áp dụng" onAction="#handleChangeRole"
+                            style="-fx-background-color: #f39c12; -fx-text-fill: white;
+                                   -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6;
+                                   -fx-cursor: hand;"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Button text="🗑 Xóa tài khoản" onAction="#handleDeleteUser"
+                            style="-fx-background-color: #e74c3c; -fx-text-fill: white;
+                                   -fx-font-weight: bold; -fx-padding: 7 18 7 18; -fx-background-radius: 6;
+                                   -fx-cursor: hand;"/>
+                </HBox>
+
+                <!-- Status message -->
+                <Label fx:id="lblUserMsg" text=""
+                       style="-fx-font-size: 13; -fx-font-style: italic;" wrapText="true"/>
+
+            </VBox>
+        </Tab>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             TAB 2: QUẢN LÝ SẢN PHẨM
+             ═══════════════════════════════════════════════════════════ -->
+        <Tab text="📦  Quản lý Sản phẩm">
+            <VBox spacing="15" style="-fx-padding: 20;">
+
+                <!-- Toolbar -->
+                <HBox alignment="CENTER_LEFT" spacing="12">
+                    <Label text="Tất cả sản phẩm đấu giá"
+                           style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Button text="🗑 Xóa tất cả đã kết thúc" onAction="#handleDeleteAllFinished"
+                            style="-fx-background-color: #e67e22; -fx-text-fill: white;
+                                   -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6;
+                                   -fx-cursor: hand;">
+                        <tooltip><Tooltip text="Xóa tất cả sản phẩm có trạng thái FINISHED / PAID / CANCELED"/></tooltip>
+                    </Button>
+                    <Button text="🔄 Tải lại" onAction="#handleLoadItems"
+                            style="-fx-background-color: #27ae60; -fx-text-fill: white;
+                                   -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6;
+                                   -fx-cursor: hand;"/>
+                </HBox>
+
+                <!-- TableView sản phẩm -->
+                <TableView fx:id="tblItems" VBox.vgrow="ALWAYS"
+                           style="-fx-background-radius: 8; -fx-border-radius: 8;">
+                    <columns>
+                        <TableColumn fx:id="colItemId"       text="ID"          prefWidth="55"/>
+                        <TableColumn fx:id="colItemName"     text="Tên sản phẩm" prefWidth="230"/>
+                        <TableColumn fx:id="colItemCategory" text="Loại"         prefWidth="110"/>
+                        <TableColumn fx:id="colItemPrice"    text="Giá hiện tại" prefWidth="130"/>
+                        <TableColumn fx:id="colItemStatus"   text="Trạng thái"   prefWidth="120"/>
+                        <TableColumn fx:id="colSellerId"     text="Seller ID"    prefWidth="90"/>
+                    </columns>
+                    <placeholder>
+                        <Label text="Chưa có dữ liệu. Nhấn 'Tải lại' để cập nhật."
+                               style="-fx-text-fill: #95a5a6;"/>
+                    </placeholder>
+                </TableView>
+
+                <!-- Khu vực thao tác -->
+                <HBox spacing="12" alignment="CENTER_LEFT"
+                      style="-fx-background-color: white; -fx-padding: 15;
+                             -fx-background-radius: 8;
+                             -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.07), 5, 0, 0, 2);">
+                    <Label text="Đổi trạng thái:"
+                           style="-fx-font-weight: bold; -fx-font-size: 14;"/>
+                    <ComboBox fx:id="cmbItemStatus" prefWidth="160"
+                              style="-fx-font-size: 13;">
+                        <!-- Items set trong initialize() -->
+                    </ComboBox>
+                    <Button text="✏ Áp dụng" onAction="#handleChangeItemStatus"
+                            style="-fx-background-color: #f39c12; -fx-text-fill: white;
+                                   -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6;
+                                   -fx-cursor: hand;"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Button text="⚡ Xóa buộc sản phẩm" onAction="#handleDeleteItem"
+                            style="-fx-background-color: #e74c3c; -fx-text-fill: white;
+                                   -fx-font-weight: bold; -fx-padding: 7 18 7 18; -fx-background-radius: 6;
+                                   -fx-cursor: hand;">
+                        <tooltip><Tooltip text="Xóa sản phẩm đang chọn (kể cả RUNNING — sẽ thông báo người dùng)"/></tooltip>
+                    </Button>
+                </HBox>
+
+                <!-- Status message -->
+                <Label fx:id="lblItemMsg" text=""
+                       style="-fx-font-size: 13; -fx-font-style: italic;" wrapText="true"/>
+
+            </VBox>
+        </Tab>
+
+    </TabPane>
+</VBox>

@@ -8,18 +8,34 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 
 public class ItemDAO {
 
     // =========================================================================
-    // 1. Lấy sản phẩm hiển thị cho Bidder (OPEN hoặc RUNNING)
+    // 1. Lấy sản phẩm hiển thị cho Dashboard (tất cả trừ CANCELED)
+    //
+    // FIX: Trước đây chỉ trả về OPEN/RUNNING → item vừa hết hạn (FINISHED)
+    //   biến mất khỏi dashboard ngay lập tức, người dùng không thấy kết quả.
+    //
+    // Giờ trả về tất cả trạng thái TRỪ CANCELED, sắp xếp theo thứ tự:
+    //   ① RUNNING (đang diễn ra) → hiện lên đầu
+    //   ② OPEN    (sắp bắt đầu)
+    //   ③ FINISHED / PAID        → hiện ở cuối với badge "Đã kết thúc"
+    //
+    // Phù hợp với UX của eBay: người dùng thấy cả phiên đang chạy lẫn đã kết thúc.
     // =========================================================================
     public List<Item> getActiveItems() {
         List<Item> items = new ArrayList<>();
-        String sql = "SELECT * FROM items WHERE status IN ('OPEN', 'RUNNING') ORDER BY end_time ASC";
+
+        // FIELD() trả về vị trí của status trong danh sách ưu tiên:
+        //   RUNNING=1, OPEN=2, FINISHED=3, PAID=4 → sắp xếp tăng dần
+        // Trong cùng nhóm, sắp xếp theo end_time giảm dần (mới nhất lên đầu)
+        String sql = "SELECT * FROM items "
+                + "WHERE status != 'CANCELED' "
+                + "ORDER BY FIELD(status, 'RUNNING', 'OPEN', 'FINISHED', 'PAID'), "
+                + "end_time DESC";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql);
@@ -240,12 +256,12 @@ public class ItemDAO {
     }
 
     // =========================================================================
-    // 8. Thêm sản phẩm mới (Seller dùng)
+    // 8. Thêm sản phẩm mới (Seller / Admin dùng)
     // =========================================================================
     public int addItem(Item item) {
         String sql = "INSERT INTO items (name, description, starting_price, current_highest_bid, "
-                + "highest_bidder, status, end_time, seller_id, category) "
-                + "VALUES (?, ?, ?, ?, 'Chưa có', 'OPEN', ?, ?, ?)";
+                + "highest_bidder, status, end_time, seller_id, category, image_path) "
+                + "VALUES (?, ?, ?, ?, 'Chưa có', 'OPEN', ?, ?, ?, ?)";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql,
@@ -258,6 +274,7 @@ public class ItemDAO {
             pstmt.setLong(5, item.getEndTime());
             pstmt.setInt(6, item.getSellerId());
             pstmt.setString(7, item.getCategory()); // Factory Method: lưu loại item vào DB
+            pstmt.setString(8, item.getImagePath()); // null nếu không có ảnh
 
             int rows = pstmt.executeUpdate();
             if (rows > 0) {
@@ -296,7 +313,7 @@ public class ItemDAO {
     }
 
     // =========================================================================
-    // 10. Xóa sản phẩm (chỉ khi OPEN/FINISHED/CANCELED)
+    // 10. Xóa sản phẩm (chỉ khi OPEN/FINISHED/CANCELED) — Seller dùng
     // =========================================================================
     public boolean deleteItem(int itemId) {
         String sql = "DELETE FROM items WHERE id=? AND status IN ('OPEN', 'FINISHED', 'CANCELED')";
@@ -309,6 +326,42 @@ public class ItemDAO {
         } catch (SQLException e) {
             System.err.println("[ItemDAO] deleteItem lỗi: " + e.getMessage());
             return false;
+        }
+    }
+
+    // =========================================================================
+    // 10b. Admin force-delete: xóa bất kể trạng thái (RUNNING/OPEN/FINISHED/...)
+    //
+    // bid_history được xóa tự động nhờ ON DELETE CASCADE trong schema SQL.
+    // Dùng riêng cho Admin — không cho Seller gọi trực tiếp.
+    // =========================================================================
+    public boolean adminForceDeleteItem(int itemId) {
+        String sql = "DELETE FROM items WHERE id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, itemId);
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            System.err.println("[ItemDAO] adminForceDeleteItem lỗi: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // =========================================================================
+    // 10c. Admin batch-delete: xóa tất cả sản phẩm đã kết thúc
+    //   (FINISHED / PAID / CANCELED). Trả về số dòng bị xóa, -1 nếu lỗi.
+    //
+    // Dùng cho nút "Xóa tất cả đã kết thúc" trong Admin Panel.
+    // bid_history liên quan cũng bị xóa theo CASCADE.
+    // =========================================================================
+    public int deleteAllFinishedItems() {
+        String sql = "DELETE FROM items WHERE status IN ('FINISHED', 'PAID', 'CANCELED')";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            return pstmt.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("[ItemDAO] deleteAllFinishedItems lỗi: " + e.getMessage());
+            return -1;
         }
     }
 
@@ -367,6 +420,11 @@ public class ItemDAO {
         item.setEndTime(endTime);
 
         item.setSellerId(rs.getInt("seller_id"));
+
+        // FIX: Đọc image_path từ DB và gán vào item.
+        // Trước đây thiếu dòng này → imagePath luôn null sau khi load từ DB
+        // → client không bao giờ hiển thị được ảnh dù server đã lưu đúng.
+        item.setImagePath(rs.getString("image_path"));
 
         return item;
     }

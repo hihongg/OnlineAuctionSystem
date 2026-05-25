@@ -1,23 +1,29 @@
 package com.auction.client.controllers;
 
+import com.auction.client.utils.ClientService;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
-import java.io.File;
 
 public class ClientApp extends Application {
 
     @Override
     public void start(Stage primaryStage) throws Exception {
-        // TẠM THỜI: Đổi đường dẫn từ LoginView.fxml sang MainDashboard.fxml để mở thẳng trang Dashboard
-        Parent root = FXMLLoader.load(new File("client/src/main/resources/RegisterView.fxml").toURI().toURL());
+        // 1. Kết nối tới Server ngay khi khởi động app
+        ClientService.connect();
 
-        primaryStage.setTitle("Online Auction System - Dashboard (Giai đoạn thiết kế UI)");
+        // 2. Load màn hình đăng nhập
+        Parent root = FXMLLoader.load(getClass().getResource("/LoginView.fxml"));
+
+        primaryStage.setTitle("Online Auction System");
         primaryStage.setScene(new Scene(root, 800, 500));
         primaryStage.centerOnScreen();
-        primaryStage.setMaximized(true); // Tự động phóng to toàn màn hình
+
+        // 3. Ngắt kết nối sạch khi người dùng đóng cửa sổ
+        primaryStage.setOnCloseRequest(event -> ClientService.disconnect());
+
         primaryStage.show();
     }
 

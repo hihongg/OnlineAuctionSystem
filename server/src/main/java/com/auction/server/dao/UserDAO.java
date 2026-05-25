@@ -11,13 +11,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 
-/**
- * DAO thao tác với bảng users.
- *
- * Mỗi phương thức tự lấy Connection từ pool và trả lại ngay khi xong
- * (try-with-resources). Không lưu Connection vào field — đây là lý do
- * phiên bản cũ không thread-safe: mọi thread dùng chung 1 connection.
- */
 public class UserDAO {
 
     // =========================================================================
@@ -39,7 +32,6 @@ public class UserDAO {
             return pstmt.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            // username đã tồn tại (UNIQUE constraint) → không cần stacktrace
             System.err.println("[UserDAO] registerUser thất bại: " + e.getMessage());
             return false;
         }
@@ -90,12 +82,11 @@ public class UserDAO {
         } catch (SQLException e) {
             System.err.println("[UserDAO] getUserInfo lỗi: " + e.getMessage());
         }
-        return null;  // ← BUG CŨ: thiếu dòng này, khiến các phương thức bên dưới
-        //   bị hiểu là nằm bên trong getUserInfo → lỗi compile
+        return null;
     }
 
     // =========================================================================
-    // 4. LẤY ID CỦA USER (dùng khi Seller thêm sản phẩm — cần seller_id)
+    // 4. LẤY ID CỦA USER
     // =========================================================================
     public int getUserIdByUsername(String username) {
         String sql = "SELECT id FROM users WHERE username = ?";
@@ -114,14 +105,23 @@ public class UserDAO {
     }
 
     // =========================================================================
-    // 5. ADMIN — LẤY DANH SÁCH TẤT CẢ NGƯỜI DÙNG
+    // 5. ADMIN — LẤY DANH SÁCH TẤT CẢ NGƯỜI DÙNG (kèm số dư ví)
     //
-    // Trả về List<String[]>, mỗi phần tử là [id, username, email, role, created_at].
-    // KHÔNG trả password (dù đã hash) — tối thiểu hóa dữ liệu nhạy cảm.
+    // Trả về List<String[]>, mỗi phần tử là:
+    //   [id, username, email, role, created_at, balance]
+    //
+    // Nếu cột balance chưa tồn tại (chưa chạy migration), tự động
+    // thêm cột và trả về 0.00 cho tất cả user, không crash app.
     // =========================================================================
     public List<String[]> getAllUsers() {
-        String sql = "SELECT id, username, email, role, created_at FROM users ORDER BY id";
         List<String[]> users = new java.util.ArrayList<>();
+
+        // Đảm bảo cột balance tồn tại — tự động tạo nếu chưa có
+        ensureBalanceColumn();
+
+        String sql = "SELECT id, username, email, role, created_at, "
+                + "COALESCE(balance, 0.00) AS balance "
+                + "FROM users ORDER BY id";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql);
@@ -133,7 +133,8 @@ public class UserDAO {
                         rs.getString("username"),
                         rs.getString("email") != null ? rs.getString("email") : "",
                         rs.getString("role"),
-                        rs.getString("created_at")
+                        rs.getString("created_at") != null ? rs.getString("created_at") : "",
+                        String.format("%.2f", rs.getDouble("balance"))
                 });
             }
 
@@ -144,23 +145,42 @@ public class UserDAO {
     }
 
     // =========================================================================
+    // HELPER — Tự động thêm cột balance nếu chưa tồn tại trong bảng users
+    // Gọi khi admin lấy danh sách user, an toàn nếu cột đã tồn tại.
+    // =========================================================================
+    private void ensureBalanceColumn() {
+        String checkSql = "SELECT COUNT(*) FROM information_schema.COLUMNS "
+                + "WHERE TABLE_SCHEMA = DATABASE() "
+                + "AND TABLE_NAME = 'users' "
+                + "AND COLUMN_NAME = 'balance'";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement check = conn.prepareStatement(checkSql);
+             ResultSet rs = check.executeQuery()) {
+
+            if (rs.next() && rs.getInt(1) == 0) {
+                // Cột chưa tồn tại → tạo mới
+                String alterSql = "ALTER TABLE users "
+                        + "ADD COLUMN balance DECIMAL(15,2) NOT NULL DEFAULT 0.00";
+                try (PreparedStatement alter = conn.prepareStatement(alterSql)) {
+                    alter.executeUpdate();
+                    System.out.println("[UserDAO] Đã tự động thêm cột 'balance' vào bảng users.");
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("[UserDAO] ensureBalanceColumn lỗi: " + e.getMessage());
+        }
+    }
+
+    // =========================================================================
     // 6. ADMIN — XÓA NGƯỜI DÙNG
-    //
-    // Chỉ xóa được BIDDER và SELLER.
-    // ADMIN không được tự xóa chính mình và không xóa được admin khác
-    // → tránh mất toàn bộ quyền quản trị.
-    //
-    // Lưu ý: do FK seller_id REFERENCES users(id) ON DELETE SET NULL,
-    //   các sản phẩm của Seller bị xóa sẽ có seller_id = NULL (không mất dữ liệu đấu giá).
     // =========================================================================
     public boolean deleteUser(String usernameToDelete, String requestingAdmin) {
-        // Không cho phép admin tự xóa chính mình
         if (usernameToDelete.equals(requestingAdmin)) {
             System.err.println("[UserDAO] Admin không thể tự xóa chính mình: " + requestingAdmin);
             return false;
         }
 
-        // Không cho phép xóa tài khoản có role ADMIN
         String[] targetInfo = getUserInfo(usernameToDelete);
         if (targetInfo == null) {
             System.err.println("[UserDAO] deleteUser: không tìm thấy user '" + usernameToDelete + "'");
@@ -191,23 +211,16 @@ public class UserDAO {
 
     // =========================================================================
     // 7. ADMIN — ĐỔI ROLE NGƯỜI DÙNG
-    //
-    // Cho phép Admin nâng/hạ quyền: BIDDER ↔ SELLER.
-    // KHÔNG cho phép đổi thành ADMIN (tránh leo thang đặc quyền).
-    // KHÔNG cho phép đổi role của chính admin đang thực hiện.
     // =========================================================================
     public boolean updateUserRole(String targetUsername, String newRole, String requestingAdmin) {
-        // Validate role mới
         if (!newRole.equals("BIDDER") && !newRole.equals("SELLER")) {
             System.err.println("[UserDAO] updateUserRole: role không hợp lệ '" + newRole + "'");
             return false;
         }
-        // Không cho phép đổi role chính mình
         if (targetUsername.equals(requestingAdmin)) {
             System.err.println("[UserDAO] Admin không thể đổi role chính mình.");
             return false;
         }
-        // Không cho phép đổi role của ADMIN khác
         String[] targetInfo = getUserInfo(targetUsername);
         if (targetInfo != null && "ADMIN".equals(targetInfo[1])) {
             System.err.println("[UserDAO] Không được đổi role của tài khoản ADMIN.");
@@ -234,14 +247,55 @@ public class UserDAO {
     }
 
     // =========================================================================
-    // HELPER — Hash mật khẩu bằng SHA-256 trước khi lưu / so sánh DB
+    // 8. VÍ TIỀN — LẤY SỐ DƯ
+    // =========================================================================
+    public double getBalance(String username) {
+        ensureBalanceColumn();
+        String sql = "SELECT COALESCE(balance, 0.00) AS balance FROM users WHERE username = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setString(1, username);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) return rs.getDouble("balance");
+            }
+        } catch (SQLException e) {
+            System.err.println("[UserDAO] getBalance lỗi: " + e.getMessage());
+        }
+        return -1;
+    }
+
+    // =========================================================================
+    // 9. VÍ TIỀN — NẠP TIỀN
     //
-    // Tại sao không lưu plain text?
-    //   - Nếu DB bị lộ, toàn bộ mật khẩu người dùng bị lộ ngay lập tức.
-    //   - SHA-256 là one-way hash: không thể đảo ngược → an toàn hơn.
-    //
-    // Lưu ý nâng cao: production nên dùng bcrypt/Argon2 (có salt tự động).
-    //   SHA-256 ở đây đủ cho mục đích học tập / bài tập lớn.
+    // Chỉ cho phép nạp số dương.
+    // Trả về số dư mới sau khi nạp, hoặc -1 nếu thất bại.
+    // =========================================================================
+    public double deposit(String username, double amount) {
+        if (amount <= 0) {
+            System.err.println("[UserDAO] deposit: số tiền phải > 0");
+            return -1;
+        }
+        String sql = "UPDATE users SET balance = balance + ? WHERE username = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setDouble(1, amount);
+            pstmt.setString(2, username);
+            if (pstmt.executeUpdate() > 0) {
+                double newBalance = getBalance(username);
+                System.out.println("[UserDAO] '" + username + "' nạp $"
+                        + amount + " → số dư mới: $" + newBalance);
+                return newBalance;
+            }
+        } catch (SQLException e) {
+            System.err.println("[UserDAO] deposit lỗi: " + e.getMessage());
+        }
+        return -1;
+    }
+
+    // =========================================================================
+    // HELPER — Hash mật khẩu bằng SHA-256
     // =========================================================================
     static String hashPassword(String password) {
         try {
@@ -251,7 +305,6 @@ public class UserDAO {
             for (byte b : hash) sb.append(String.format("%02x", b));
             return sb.toString();
         } catch (NoSuchAlgorithmException e) {
-            // SHA-256 luôn tồn tại trong JDK chuẩn — không bao giờ xảy ra
             throw new RuntimeException("SHA-256 không khả dụng", e);
         }
     }

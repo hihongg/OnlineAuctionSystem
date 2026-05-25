@@ -10,11 +10,11 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
-    # ----------------------------------------------------------------
+    # ------------------------------------------------------------------
     # MySQL service container — các DAO test cần kết nối thật tới DB.
     # Biến môi trường DB_URL / DB_USER / DB_PASS được truyền xuống
     # từ job env, khớp với getEnv() trong DatabaseConnection.java.
-    # ----------------------------------------------------------------
+    # ------------------------------------------------------------------
     services:
       mysql:
         image: mysql:8.0
@@ -39,7 +39,7 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      # 2. Cài Java 17
+      # 2. Cài Java 17 (khớp với maven.compiler.source=17 trong root pom.xml)
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -47,20 +47,30 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # 3. Khởi tạo schema auction_db từ sql/auction_db.sql
-      - name: Init database schema
+      # 3. Nạp schema & dữ liệu mẫu vào MySQL container
+      #    (bao gồm INSERT admin/seller1/bidder1 mặc định mà UserDAOTest cần)
+      - name: Initialize database schema
         run: |
-          mysql -h 127.0.0.1 -u root -ptestpass auction_db < sql/auction_db.sql
+          mysql -h 127.0.0.1 -u root -ptestpass < sql/auction_db.sql
 
-      # 4. Build toàn bộ dự án (shared → server → client) + chạy JUnit tests
-      - name: Build & run tests (Maven)
-        run: mvn --batch-mode --no-transfer-progress verify
+      # 4. Build shared trước (server & client đều phụ thuộc vào shared)
+      - name: Build shared module
+        run: mvn -pl shared install -DskipTests -B
 
-      # 5. Upload báo cáo test (tuỳ chọn – hữu ích để xem trực tiếp trên GitHub)
-      - name: Upload test reports
+      # 5. Build + chạy toàn bộ JUnit test phía server
+      #    (UserDAOTest, ItemDAOTest, BidDAOTest, UserDAOHashPasswordTest)
+      - name: Build & test server
+        run: mvn -pl server test -B
+
+      # 6. Build client (chỉ compile, không test vì cần màn hình để chạy JavaFX)
+      - name: Build client (compile only)
+        run: mvn -pl client compile -DskipTests -B
+
+      # 7. Tóm tắt kết quả test (hiển thị trong tab Summary của GitHub Actions)
+      - name: Publish test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: mikepenz/action-junit-report@v4
         with:
-          name: surefire-reports
-          path: server/target/surefire-reports/
-          if-no-files-found: ignore
+          report_paths: 'server/target/surefire-reports/TEST-*.xml'
+          check_name: 'JUnit Test Results'
+          fail_on_failure: true

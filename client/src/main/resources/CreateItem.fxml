@@ -2,8 +2,9 @@
 
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
+<?import javafx.scene.image.*?>
 
-<VBox alignment="CENTER" prefHeight="700.0" prefWidth="900.0" spacing="20.0"
+<VBox alignment="CENTER" prefHeight="800.0" prefWidth="900.0" spacing="20.0"
       style="-fx-background-color: #f4f4f4; -fx-padding: 30;"
       xmlns="http://javafx.com/javafx/17"
       xmlns:fx="http://javafx.com/fxml/1"
@@ -17,66 +18,117 @@
 
         <!-- ── Tiêu đề ── -->
         <Label text="Đăng Bán Sản Phẩm"
-               style="-fx-font-size: 26px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+               style="-fx-font-size: 26; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
         <Label text="Vui lòng điền thông tin món đồ bạn muốn đấu giá"
-               style="-fx-text-fill: #7f8c8d; -fx-font-size: 14px;"/>
+               style="-fx-text-fill: #7f8c8d; -fx-font-size: 14;"/>
 
         <Region prefHeight="10.0"/>
 
         <!-- ── Tên sản phẩm ── -->
         <VBox spacing="5.0">
             <Label text="Tên sản phẩm:"
-                   style="-fx-font-weight: bold; -fx-text-fill: #34495e; -fx-font-size: 14px;"/>
+                   style="-fx-font-weight: bold; -fx-text-fill: #34495e; -fx-font-size: 14;"/>
             <TextField fx:id="txtName"
                        promptText="Ví dụ: Tai nghe Sony WH-1000XM5"
-                       style="-fx-font-size: 14px; -fx-padding: 10;"/>
+                       style="-fx-font-size: 14; -fx-padding: 10;"/>
         </VBox>
 
-        <!-- ── Mô tả sản phẩm (MỚI) ── -->
+        <!-- ── Mô tả sản phẩm ── -->
         <VBox spacing="5.0">
             <Label text="Mô tả sản phẩm:"
-                   style="-fx-font-weight: bold; -fx-text-fill: #34495e; -fx-font-size: 14px;"/>
+                   style="-fx-font-weight: bold; -fx-text-fill: #34495e; -fx-font-size: 14;"/>
             <TextArea fx:id="txtDescription"
                       promptText="Mô tả chi tiết: tình trạng, thông số kỹ thuật, phụ kiện đi kèm..."
                       prefRowCount="4"
                       wrapText="true"
-                      style="-fx-font-size: 14px; -fx-padding: 8;"/>
+                      style="-fx-font-size: 14; -fx-padding: 8;"/>
         </VBox>
 
-        <!-- ── Loại sản phẩm (MỚI) ── -->
+        <!-- ── Loại sản phẩm ── -->
         <VBox spacing="5.0">
             <Label text="Loại sản phẩm:"
-                   style="-fx-font-weight: bold; -fx-text-fill: #34495e; -fx-font-size: 14px;"/>
+                   style="-fx-font-weight: bold; -fx-text-fill: #34495e; -fx-font-size: 14;"/>
             <ComboBox fx:id="cmbCategory"
                       maxWidth="Infinity"
-                      style="-fx-font-size: 14px;">
-                <!-- Items được set trong initialize() của Controller -->
+                      style="-fx-font-size: 14;">
             </ComboBox>
+        </VBox>
+
+        <!-- ── Hình ảnh sản phẩm (MỚI) ── -->
+        <VBox spacing="8.0">
+            <Label text="Hình ảnh sản phẩm:"
+                   style="-fx-font-weight: bold; -fx-text-fill: #34495e; -fx-font-size: 14;"/>
+            <!-- Vùng preview ảnh -->
+            <StackPane fx:id="imagePreviewPane"
+                       prefHeight="180.0"
+                       style="-fx-background-color: #f0f0f0;
+                              -fx-border-color: #bdc3c7;
+                              -fx-border-style: dashed;
+                              -fx-border-width: 2;
+                              -fx-border-radius: 6;
+                              -fx-background-radius: 6;">
+                <Label fx:id="lblImagePlaceholder"
+                       text="Chưa chọn ảnh&#10;(Click 'Chọn ảnh' để tải lên)"
+                       textAlignment="CENTER"
+                       style="-fx-text-fill: #95a5a6; -fx-font-size: 13;"/>
+                <ImageView fx:id="imgPreview"
+                           fitHeight="176.0"
+                           fitWidth="430.0"
+                           preserveRatio="true"
+                           visible="false"/>
+            </StackPane>
+            <!-- Nút chọn ảnh và xóa ảnh -->
+            <HBox spacing="10.0">
+                <Button text="📁  Chọn ảnh..."
+                        onAction="#handleChooseImage"
+                        style="-fx-background-color: #3498db;
+                               -fx-text-fill: white;
+                               -fx-font-size: 13;
+                               -fx-font-weight: bold;
+                               -fx-padding: 7 18 7 18;
+                               -fx-cursor: hand;
+                               -fx-background-radius: 5;"/>
+                <Button fx:id="btnClearImage"
+                        text="✕  Xóa ảnh"
+                        onAction="#handleClearImage"
+                        visible="false"
+                        style="-fx-background-color: #e74c3c;
+                               -fx-text-fill: white;
+                               -fx-font-size: 13;
+                               -fx-font-weight: bold;
+                               -fx-padding: 7 18 7 18;
+                               -fx-cursor: hand;
+                               -fx-background-radius: 5;"/>
+                <Label fx:id="lblImageName"
+                       text=""
+                       style="-fx-text-fill: #27ae60; -fx-font-size: 12;"
+                       VBox.vgrow="ALWAYS"/>
+            </HBox>
         </VBox>
 
         <!-- ── Giá khởi điểm ── -->
         <VBox spacing="5.0">
             <Label text="Giá khởi điểm ($):"
-                   style="-fx-font-weight: bold; -fx-text-fill: #34495e; -fx-font-size: 14px;"/>
+                   style="-fx-font-weight: bold; -fx-text-fill: #34495e; -fx-font-size: 14;"/>
             <TextField fx:id="txtPrice"
                        promptText="Ví dụ: 250.0"
-                       style="-fx-font-size: 14px; -fx-padding: 10;"/>
+                       style="-fx-font-size: 14; -fx-padding: 10;"/>
         </VBox>
 
         <!-- ── Hạn chót đấu giá ── -->
         <VBox spacing="5.0">
             <Label text="Hạn chót đấu giá (Ngày &amp; Giờ):"
-                   style="-fx-font-weight: bold; -fx-text-fill: #34495e; -fx-font-size: 14px;"/>
+                   style="-fx-font-weight: bold; -fx-text-fill: #34495e; -fx-font-size: 14;"/>
             <HBox spacing="10.0">
                 <DatePicker fx:id="datePickerEnd"
                             promptText="Chọn ngày"
-                            style="-fx-font-size: 14px; -fx-padding: 4;"
+                            style="-fx-font-size: 14; -fx-padding: 4;"
                             HBox.hgrow="ALWAYS"
                             maxWidth="Infinity"/>
                 <TextField fx:id="txtTimeEnd"
                            promptText="HH:mm  (VD: 23:59)"
                            prefWidth="160.0"
-                           style="-fx-font-size: 14px; -fx-padding: 10;"/>
+                           style="-fx-font-size: 14; -fx-padding: 10;"/>
             </HBox>
         </VBox>
 
@@ -88,18 +140,19 @@
                     onAction="#handleCancel"
                     style="-fx-background-color: #95a5a6;
                            -fx-text-fill: white;
-                           -fx-font-size: 15px;
+                           -fx-font-size: 15;
                            -fx-font-weight: bold;
-                           -fx-padding: 10 25;
+                           -fx-padding: 10 25 10 25;
                            -fx-cursor: hand;
                            -fx-background-radius: 6;"/>
             <Button text="Xác nhận Đăng bán"
+                    fx:id="btnConfirm"
                     onAction="#handleCreate"
                     style="-fx-background-color: #2ecc71;
                            -fx-text-fill: white;
-                           -fx-font-size: 15px;
+                           -fx-font-size: 15;
                            -fx-font-weight: bold;
-                           -fx-padding: 10 25;
+                           -fx-padding: 10 25 10 25;
                            -fx-cursor: hand;
                            -fx-background-radius: 6;"/>
         </HBox>

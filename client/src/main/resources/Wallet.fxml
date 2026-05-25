@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+
+<VBox prefHeight="600.0" prefWidth="860.0" spacing="0"
+      xmlns="http://javafx.com/javafx/17"
+      xmlns:fx="http://javafx.com/fxml/1"
+      style="-fx-background-color: #F4F6F9;">
+
+    <!-- Header -->
+    <HBox alignment="CENTER_LEFT" spacing="15"
+          style="-fx-background-color: #1a252f; -fx-padding: 18 25 18 25;">
+        <Label text="Ví của tôi"
+               style="-fx-font-size: 22; -fx-font-weight: bold; -fx-text-fill: white;"/>
+        <Region HBox.hgrow="ALWAYS"/>
+        <Label fx:id="lblUsername"
+               style="-fx-font-size: 13; -fx-text-fill: #bdc3c7;"/>
+        <Button text="&lt;- Quay lai" onAction="#handleBack"
+                style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 18 7 18; -fx-background-radius: 6; -fx-cursor: hand;"/>
+    </HBox>
+
+    <!-- Nội dung -->
+    <ScrollPane fitToWidth="true" VBox.vgrow="ALWAYS"
+                style="-fx-background-color: transparent; -fx-background-insets: 0;">
+        <VBox spacing="20" style="-fx-padding: 30;">
+
+            <!-- Thẻ số dư -->
+            <HBox spacing="20">
+
+                <!-- Card số dư hiện tại -->
+                <VBox spacing="10" HBox.hgrow="ALWAYS"
+                      style="-fx-background-color: #1a252f; -fx-background-radius: 16; -fx-padding: 30;">
+                    <Label text="SO DU HIEN TAI"
+                           style="-fx-font-size: 12; -fx-font-weight: bold; -fx-text-fill: #95a5a6;"/>
+                    <Label fx:id="lblBalance" text="0.00"
+                           style="-fx-font-size: 42; -fx-font-weight: bold; -fx-text-fill: #2ecc71;"/>
+                    <Label text="So du kha dung de dat gia"
+                           style="-fx-font-size: 13; -fx-text-fill: #7f8c8d;"/>
+                    <Button text="Cap nhat" onAction="#handleRefreshBalance"
+                            style="-fx-background-color: transparent; -fx-text-fill: #3498db; -fx-font-size: 12; -fx-cursor: hand; -fx-underline: true;"/>
+                </VBox>
+
+                <!-- Card hướng dẫn -->
+                <VBox spacing="10" prefWidth="260"
+                      style="-fx-background-color: white; -fx-background-radius: 16; -fx-padding: 25;">
+                    <Label text="Cach hoat dong"
+                           style="-fx-font-size: 14; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+                    <Label text="- Nap tien de co so du dau gia"
+                           style="-fx-font-size: 13; -fx-text-fill: #555; -fx-wrap-text: true;"/>
+                    <Label text="- Khi dat gia, so tien bi giu lai"
+                           style="-fx-font-size: 13; -fx-text-fill: #555; -fx-wrap-text: true;"/>
+                    <Label text="- Neu bi vuot gia, tien duoc hoan lai ngay"
+                           style="-fx-font-size: 13; -fx-text-fill: #555; -fx-wrap-text: true;"/>
+                    <Label text="- Nguoi thang: so tien dat gia bi tru vinh vien"
+                           style="-fx-font-size: 13; -fx-text-fill: #555; -fx-wrap-text: true;"/>
+                </VBox>
+
+            </HBox>
+
+            <!-- Form nạp tiền -->
+            <VBox spacing="15"
+                  style="-fx-background-color: white; -fx-background-radius: 16; -fx-padding: 30;">
+
+                <Label text="Nap tien vao vi"
+                       style="-fx-font-size: 18; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+
+                <HBox spacing="12" alignment="CENTER_LEFT">
+                    <Label text="So tien muon nap (USD):"
+                           style="-fx-font-size: 14; -fx-font-weight: bold; -fx-text-fill: #555;"/>
+                    <TextField fx:id="txtAmount"
+                               promptText="Nhap so tien (VD: 500)"
+                               prefWidth="220"
+                               style="-fx-font-size: 15; -fx-padding: 10 15 10 15; -fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: #ddd; -fx-border-width: 1.5;"/>
+                    <Button text="Nap tien ngay" onAction="#handleDeposit"
+                            style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-size: 14; -fx-font-weight: bold; -fx-padding: 10 24 10 24; -fx-background-radius: 8; -fx-cursor: hand;"/>
+                </HBox>
+
+                <!-- Nạp nhanh -->
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Nap nhanh:"
+                           style="-fx-font-size: 13; -fx-text-fill: #888;"/>
+                    <Button text="100 USD" onAction="#handleQuickDeposit100"
+                            style="-fx-background-color: #ecf0f1; -fx-text-fill: #2c3e50; -fx-font-weight: bold; -fx-padding: 6 14 6 14; -fx-background-radius: 20; -fx-cursor: hand;"/>
+                    <Button text="500 USD" onAction="#handleQuickDeposit500"
+                            style="-fx-background-color: #ecf0f1; -fx-text-fill: #2c3e50; -fx-font-weight: bold; -fx-padding: 6 14 6 14; -fx-background-radius: 20; -fx-cursor: hand;"/>
+                    <Button text="1000 USD" onAction="#handleQuickDeposit1000"
+                            style="-fx-background-color: #ecf0f1; -fx-text-fill: #2c3e50; -fx-font-weight: bold; -fx-padding: 6 14 6 14; -fx-background-radius: 20; -fx-cursor: hand;"/>
+                    <Button text="5000 USD" onAction="#handleQuickDeposit5000"
+                            style="-fx-background-color: #ecf0f1; -fx-text-fill: #2c3e50; -fx-font-weight: bold; -fx-padding: 6 14 6 14; -fx-background-radius: 20; -fx-cursor: hand;"/>
+                </HBox>
+
+                <!-- Thông báo -->
+                <Label fx:id="lblMessage" text=""
+                       style="-fx-font-size: 14; -fx-font-style: italic;" wrapText="true"/>
+
+            </VBox>
+
+        </VBox>
+    </ScrollPane>
+
+</VBox>

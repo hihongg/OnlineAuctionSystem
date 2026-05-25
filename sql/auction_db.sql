@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS users (
     password   VARCHAR(255) NOT NULL,          -- Lưu SHA-256 hash, KHÔNG lưu plain text
     email      VARCHAR(100),
     role       ENUM('BIDDER', 'SELLER', 'ADMIN') NOT NULL DEFAULT 'BIDDER',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    balance    DECIMAL(15,2) NOT NULL DEFAULT 0.00  -- Số dư ví của người dùng
     );
 
 -- Admin mặc định để test
@@ -49,6 +50,7 @@ CREATE TABLE IF NOT EXISTS items (
     end_time            BIGINT        DEFAULT 0,            -- lưu dạng milliseconds
     seller_id           INT,
     category            VARCHAR(50)   DEFAULT 'ELECTRONICS', -- Factory Method: loại item
+    image_path          VARCHAR(500)  DEFAULT NULL,          -- đường dẫn ảnh sản phẩm (tuỳ chọn)
     FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE SET NULL
     );
 

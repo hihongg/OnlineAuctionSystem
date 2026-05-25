@@ -44,6 +44,7 @@ public abstract class Item extends Entity implements Serializable {
     private long   endTime;   // timestamp milliseconds
     private int    sellerId;
     private String category;  // "ELECTRONICS" | "ART" | "VEHICLE" | "GENERAL"
+    private String imagePath; // đường dẫn ảnh sản phẩm (null nếu chưa có)
 
     // =========================================================================
     // CONSTRUCTORS
@@ -130,6 +131,9 @@ public abstract class Item extends Entity implements Serializable {
 
     public String getCategoryField()                 { return category; }
     public void   setCategoryField(String category)  { this.category = category; }
+
+    public String getImagePath()                     { return imagePath; }
+    public void   setImagePath(String imagePath)     { this.imagePath = imagePath; }
 
     @Override
     public String toString() {

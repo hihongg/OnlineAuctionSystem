@@ -15,16 +15,18 @@ import java.util.Map;
 public class BidDAO {
 
     /**
-     * Đặt giá an toàn với Transaction + Pessimistic Locking (FOR UPDATE).
+     * Đặt giá an toàn — Transaction + Pessimistic Locking + Kiểm tra số dư ví.
      *
-     * Luồng xử lý:
-     *   1. Lấy Connection riêng từ pool (không dùng chung với thread khác).
-     *   2. Tắt auto-commit → bắt đầu Transaction.
-     *   3. Khóa dòng item (FOR UPDATE) để tránh race condition.
-     *   4. Kiểm tra nghiệp vụ (status, giá).
-     *   5. Ghi bid_history + cập nhật items trong cùng 1 Transaction.
-     *   6. Commit hoặc Rollback.
-     *   7. Luôn đóng Connection trong finally → trả về pool.
+     * Luồng xử lý (tất cả trong 1 Transaction):
+     *   1. Lấy Connection riêng từ pool, tắt auto-commit.
+     *   2. Khóa dòng item (FOR UPDATE) → đọc status, giá hiện tại, người dẫn đầu cũ.
+     *   3. Kiểm tra nghiệp vụ (status RUNNING, giá đặt > giá hiện tại).
+     *   4. Khóa dòng user (FOR UPDATE) → kiểm tra số dư đủ không.
+     *   5. Ghi bid_history.
+     *   6. Cập nhật current_highest_bid + highest_bidder trên items.
+     *   7. Trừ số dư người đặt giá mới.
+     *   8. Hoàn tiền cho người bị vượt qua (nếu có).
+     *   9. Commit.
      *
      * @return "SUCCESS" nếu thành công, "ERROR: ..." nếu thất bại.
      */
@@ -32,15 +34,16 @@ public class BidDAO {
         Connection conn = null;
 
         try {
-            // Bước 1: Lấy connection riêng từ pool — mỗi thread có conn của mình
             conn = DatabaseConnection.getConnection();
-
-            // Bước 2: Bắt đầu Transaction
             conn.setAutoCommit(false);
 
-            // Bước 3: Khóa dòng sản phẩm (Pessimistic Lock)
-            String checkSql = "SELECT current_highest_bid, status "
+            // ── Bước 2: Khóa dòng sản phẩm ──────────────────────────────────
+            String checkSql = "SELECT current_highest_bid, highest_bidder, status "
                     + "FROM items WHERE id = ? FOR UPDATE";
+
+            double currentPrice;
+            String prevBidder;
+
             try (PreparedStatement checkStmt = conn.prepareStatement(checkSql)) {
                 checkStmt.setInt(1, itemId);
 
@@ -50,10 +53,11 @@ public class BidDAO {
                         return "ERROR: Không tìm thấy sản phẩm.";
                     }
 
-                    String status       = rs.getString("status");
-                    double currentPrice = rs.getDouble("current_highest_bid");
+                    String status = rs.getString("status");
+                    currentPrice  = rs.getDouble("current_highest_bid");
+                    prevBidder    = rs.getString("highest_bidder");
 
-                    // Bước 4: Kiểm tra nghiệp vụ
+                    // ── Bước 3: Kiểm tra nghiệp vụ ──────────────────────────
                     if (!"RUNNING".equals(status)) {
                         conn.rollback();
                         return "ERROR: Phiên đấu giá này đã kết thúc hoặc chưa bắt đầu.";
@@ -66,7 +70,28 @@ public class BidDAO {
                 }
             }
 
-            // Bước 5a: Lưu lịch sử đấu giá
+            // ── Bước 4: Khóa dòng user, kiểm tra số dư ──────────────────────
+            String balanceSql = "SELECT balance FROM users WHERE username = ? FOR UPDATE";
+            double balance;
+            try (PreparedStatement balStmt = conn.prepareStatement(balanceSql)) {
+                balStmt.setString(1, username);
+                try (ResultSet brs = balStmt.executeQuery()) {
+                    if (!brs.next()) {
+                        conn.rollback();
+                        return "ERROR: Không tìm thấy tài khoản người đặt giá.";
+                    }
+                    balance = brs.getDouble("balance");
+                }
+            }
+            if (balance < bidAmount) {
+                conn.rollback();
+                return String.format(
+                        "ERROR: Số dư không đủ. Số dư hiện tại: $%.2f, cần $%.2f. "
+                                + "Vui lòng nạp thêm tiền vào ví.",
+                        balance, bidAmount);
+            }
+
+            // ── Bước 5: Lưu lịch sử đặt giá ─────────────────────────────────
             String insertHistorySql =
                     "INSERT INTO bid_history (item_id, username, bid_amount, bid_time) "
                             + "VALUES (?, ?, ?, ?)";
@@ -78,8 +103,7 @@ public class BidDAO {
                 insertStmt.executeUpdate();
             }
 
-            // Bước 5b: Cập nhật giá và người dẫn đầu trên bảng items
-            // Lưu ý: tên cột "highest_bidder" phải khớp với SQL schema (auction_db.sql)
+            // ── Bước 6: Cập nhật giá và người dẫn đầu ────────────────────────
             String updateItemSql =
                     "UPDATE items SET current_highest_bid = ?, highest_bidder = ? "
                             + "WHERE id = ?";
@@ -90,7 +114,31 @@ public class BidDAO {
                 updateStmt.executeUpdate();
             }
 
-            // Bước 6: Commit — lưu vĩnh viễn
+            // ── Bước 7: Trừ số dư người đặt giá mới ─────────────────────────
+            String deductSql = "UPDATE users SET balance = balance - ? WHERE username = ?";
+            try (PreparedStatement deductStmt = conn.prepareStatement(deductSql)) {
+                deductStmt.setDouble(1, bidAmount);
+                deductStmt.setString(2, username);
+                deductStmt.executeUpdate();
+            }
+
+            // ── Bước 8: Hoàn tiền cho người bị vượt qua (nếu có) ─────────────
+            // "Chưa có" = chưa có ai đặt giá → không cần hoàn tiền
+            if (prevBidder != null
+                    && !prevBidder.equals("Chưa có")
+                    && !prevBidder.equals(username)
+                    && currentPrice > 0) {
+                String refundSql = "UPDATE users SET balance = balance + ? WHERE username = ?";
+                try (PreparedStatement refundStmt = conn.prepareStatement(refundSql)) {
+                    refundStmt.setDouble(1, currentPrice);
+                    refundStmt.setString(2, prevBidder);
+                    refundStmt.executeUpdate();
+                    System.out.printf("[BidDAO] Hoàn $%.2f cho '%s' (bị vượt giá bởi '%s')%n",
+                            currentPrice, prevBidder, username);
+                }
+            }
+
+            // ── Bước 9: Commit ────────────────────────────────────────────────
             conn.commit();
             return "SUCCESS";
 
@@ -102,12 +150,10 @@ public class BidDAO {
             return "ERROR: Lỗi hệ thống khi đặt giá.";
 
         } finally {
-            // Bước 7: LUÔN trả connection về pool dù thành công hay thất bại
-            // (Với HikariCP, conn.close() không đóng kết nối vật lý — chỉ trả về pool)
             if (conn != null) {
                 try {
-                    conn.setAutoCommit(true); // reset trạng thái trước khi trả pool
-                    conn.close();             // ← bản cũ THIẾU dòng này → pool bị cạn
+                    conn.setAutoCommit(true);
+                    conn.close();
                 } catch (SQLException ex) {
                     ex.printStackTrace();
                 }
@@ -118,34 +164,24 @@ public class BidDAO {
     // =========================================================================
     // Lấy lịch sử đặt giá của 1 item — dùng cho biểu đồ giá realtime
     // =========================================================================
-
-    /**
-     * Trả về danh sách các lần đặt giá theo thứ tự thời gian tăng dần.
-     * Mỗi phần tử là Map gồm: "username", "bidAmount", "bidTime" (timestamp ms).
-     *
-     * Client nhận JSON list này để vẽ line chart (trục X = time, trục Y = giá).
-     */
     public List<Map<String, Object>> getBidHistory(int itemId) {
-        List<Map<String, Object>> history = new ArrayList<>();
         String sql = "SELECT username, bid_amount, bid_time "
-                + "FROM bid_history WHERE item_id = ? "
-                + "ORDER BY bid_time ASC";
+                + "FROM bid_history WHERE item_id = ? ORDER BY bid_time ASC";
+        List<Map<String, Object>> history = new ArrayList<>();
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
             pstmt.setInt(1, itemId);
-
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
                     Map<String, Object> entry = new HashMap<>();
-                    entry.put("username",  rs.getString("username"));
-                    entry.put("bidAmount", rs.getDouble("bid_amount"));
-                    entry.put("bidTime",   rs.getTimestamp("bid_time").getTime());
+                    entry.put("username",   rs.getString("username"));
+                    entry.put("bidAmount",  rs.getDouble("bid_amount"));
+                    entry.put("bidTime",    rs.getTimestamp("bid_time").getTime());
                     history.add(entry);
                 }
             }
-
         } catch (SQLException e) {
             System.err.println("[BidDAO] getBidHistory lỗi: " + e.getMessage());
         }

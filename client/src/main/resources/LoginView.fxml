@@ -7,25 +7,25 @@
       xmlns="http://javafx.com/javafx/17"
       xmlns:fx="http://javafx.com/fxml/1"
       fx:controller="com.auction.client.controllers.LoginController"
-      style="-fx-background-image: url('file:client/src/main/resources/images/LoginView.jpg'); -fx-background-size: cover; -fx-background-position: center center;">
+      style="-fx-background-image: url('/images/LoginView.jpg'); -fx-background-size: cover; -fx-background-position: center center;">
 
     <VBox prefWidth="400.0" alignment="CENTER" spacing="15.0"
-          style="-fx-background-color: transparent; -fx-padding: 40px;">
+          style="-fx-background-color: transparent; -fx-padding: 40;">
 
-        <Label text="Login to Auction" style="-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: white;"/>
+        <Label text="Login to Auction" style="-fx-font-size: 24; -fx-font-weight: bold; -fx-text-fill: white;"/>
 
         <TextField fx:id="txtUsername" promptText="Username"
-                   style="-fx-pref-height: 40px; -fx-background-radius: 5px;"/>
+                   style="-fx-pref-height: 40; -fx-background-radius: 5;"/>
 
         <PasswordField fx:id="txtPassword" promptText="Password"
-                       style="-fx-pref-height: 40px; -fx-background-radius: 5px;"/>
+                       style="-fx-pref-height: 40; -fx-background-radius: 5;"/>
 
         <Button text="Login" onAction="#handleLogin" prefWidth="320.0"
-                style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 12px; -fx-background-radius: 5px; -fx-cursor: hand;"/>
+                style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 12; -fx-background-radius: 5; -fx-cursor: hand;"/>
 
         <Label text="Don't have an account?" style="-fx-text-fill: white; -fx-padding: 10 0 0 0;"/>
 
         <Button text="Create Account" onAction="#handleGoToRegister" prefWidth="320.0"
-                style="-fx-background-color: #4C4DD1; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 12px; -fx-background-radius: 5px; -fx-cursor: hand;"/>
+                style="-fx-background-color: #4C4DD1; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 12; -fx-background-radius: 5; -fx-cursor: hand;"/>
     </VBox>
 </HBox>
