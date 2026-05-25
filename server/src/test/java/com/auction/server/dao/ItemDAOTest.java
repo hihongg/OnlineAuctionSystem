@@ -83,13 +83,17 @@ public class ItemDAOTest {
 
     @Test
     public void testGetActiveItems_notReturnFinished() throws SQLException {
-        // Đổi item test thành FINISHED
-        itemDAO.updateStatus(testItemId, Item.Status.FINISHED);
+        // Đổi item test thành CANCELED
+        // Lưu ý: getActiveItems() hiện trả về TẤT CẢ trạng thái TRỪ CANCELED
+        // (bao gồm RUNNING, OPEN, FINISHED, PAID) — UX giống eBay, người dùng
+        // vẫn thấy phiên đã kết thúc trên dashboard.
+        // Do đó test này kiểm tra CANCELED không xuất hiện (thay vì FINISHED).
+        itemDAO.updateStatus(testItemId, Item.Status.CANCELED);
 
         List<Item> items = itemDAO.getActiveItems();
 
         boolean found = items.stream().anyMatch(i -> i.getName().equals(testItemName));
-        assertFalse(found, "Item FINISHED không được xuất hiện trong getActiveItems()");
+        assertFalse(found, "Item CANCELED không được xuất hiện trong getActiveItems()");
     }
 
     // =========================================================================
