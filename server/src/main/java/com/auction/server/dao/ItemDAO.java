@@ -260,8 +260,8 @@ public class ItemDAO {
     // =========================================================================
     public int addItem(Item item) {
         String sql = "INSERT INTO items (name, description, starting_price, current_highest_bid, "
-                + "highest_bidder, status, end_time, seller_id, category, image_path) "
-                + "VALUES (?, ?, ?, ?, 'Chưa có', 'OPEN', ?, ?, ?, ?)";
+                + "highest_bidder, status, start_time, end_time, seller_id, category, image_path) "
+                + "VALUES (?, ?, ?, ?, 'Chưa có', 'OPEN', ?, ?, ?, ?, ?)";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql,
@@ -271,10 +271,13 @@ public class ItemDAO {
             pstmt.setString(2, item.getDescription());
             pstmt.setDouble(3, item.getStartingPrice());
             pstmt.setDouble(4, item.getStartingPrice());
-            pstmt.setLong(5, item.getEndTime());
-            pstmt.setInt(6, item.getSellerId());
-            pstmt.setString(7, item.getCategory()); // Factory Method: lưu loại item vào DB
-            pstmt.setString(8, item.getImagePath()); // null nếu không có ảnh
+            // start_time là TIMESTAMP: 0 = bắt đầu ngay (dùng thời điểm hiện tại)
+            long st = item.getStartTime();
+            pstmt.setTimestamp(5, new java.sql.Timestamp(st > 0 ? st : System.currentTimeMillis()));
+            pstmt.setLong(6, item.getEndTime());
+            pstmt.setInt(7, item.getSellerId());
+            pstmt.setString(8, item.getCategory());  // Factory Method: lưu loại item vào DB
+            pstmt.setString(9, item.getImagePath()); // null nếu không có ảnh
 
             int rows = pstmt.executeUpdate();
             if (rows > 0) {
@@ -439,6 +442,14 @@ public class ItemDAO {
             } catch (IllegalArgumentException e) {
                 System.err.println("[ItemDAO] Status không hợp lệ: " + statusStr);
             }
+        }
+
+        // FIX: Đọc start_time từ DB và gán vào item.
+        // Thiếu dòng này → startTime luôn = 0 khi truyền xuống client
+        // → client không phân biệt được "Sắp diễn ra" vs "Đang diễn ra".
+        java.sql.Timestamp startTs = rs.getTimestamp("start_time");
+        if (startTs != null) {
+            item.setStartTime(startTs.getTime());
         }
 
         long endTime = rs.getLong("end_time");

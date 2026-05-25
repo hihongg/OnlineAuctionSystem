@@ -47,6 +47,8 @@ public class CreateItemController {
 
     @FXML public TextField        txtName;
     @FXML public TextField        txtPrice;
+    @FXML public DatePicker       datePickerStart;
+    @FXML public TextField        txtTimeStart;
     @FXML public DatePicker       datePickerEnd;
     @FXML public TextField        txtTimeEnd;
     @FXML public TextArea         txtDescription;
@@ -148,15 +150,25 @@ public class CreateItemController {
         String name        = txtName.getText().trim();
         String description = (txtDescription != null) ? txtDescription.getText().trim() : "";
         String priceStr    = txtPrice.getText().trim();
-        var    date        = datePickerEnd.getValue();
-        String timeStr     = (txtTimeEnd != null) ? txtTimeEnd.getText().trim() : "";
+        var    dateEnd     = datePickerEnd.getValue();
+        String timeStrEnd  = (txtTimeEnd != null) ? txtTimeEnd.getText().trim() : "";
+        var    dateStart   = (datePickerStart != null) ? datePickerStart.getValue() : null;
+        String timeStrStart = (txtTimeStart != null) ? txtTimeStart.getText().trim() : "";
         String category    = (cmbCategory != null && cmbCategory.getValue() != null)
                 ? cmbCategory.getValue() : "ELECTRONICS";
 
         // ── 2. Validate: trường bắt buộc ──────────────────────────────────
-        if (name.isEmpty() || priceStr.isEmpty() || date == null || timeStr.isEmpty()) {
+        if (name.isEmpty() || priceStr.isEmpty() || dateEnd == null || timeStrEnd.isEmpty()) {
             showAlert(Alert.AlertType.ERROR, "Thiếu thông tin",
                     "Vui lòng nhập đầy đủ: tên, giá, ngày và giờ kết thúc!");
+            return;
+        }
+        // Validate: nếu nhập một trong hai (ngày/giờ) bắt đầu thì phải nhập cả hai
+        boolean hasStartDate = (dateStart != null);
+        boolean hasStartTime = (timeStrStart != null && !timeStrStart.isEmpty());
+        if (hasStartDate != hasStartTime) {
+            showAlert(Alert.AlertType.ERROR, "Thời gian bắt đầu không đầy đủ",
+                    "Vui lòng nhập cả ngày lẫn giờ bắt đầu, hoặc để trống cả hai để bắt đầu ngay.");
             return;
         }
 
@@ -175,18 +187,30 @@ public class CreateItemController {
             return;
         }
 
-        // ── 4. Validate: định dạng giờ ────────────────────────────────────
+        // ── 4. Validate: định dạng giờ kết thúc ──────────────────────────
         LocalTime endLocalTime;
         try {
-            endLocalTime = LocalTime.parse(timeStr, DateTimeFormatter.ofPattern("HH:mm"));
+            endLocalTime = LocalTime.parse(timeStrEnd, DateTimeFormatter.ofPattern("HH:mm"));
         } catch (Exception e) {
-            showAlert(Alert.AlertType.ERROR, "Giờ không hợp lệ",
-                    "Giờ phải đúng định dạng HH:mm. Ví dụ: 23:59");
+            showAlert(Alert.AlertType.ERROR, "Giờ kết thúc không hợp lệ",
+                    "Giờ kết thúc phải đúng định dạng HH:mm. Ví dụ: 23:59");
             return;
         }
 
+        // ── 4b. Validate: định dạng giờ bắt đầu (nếu có) ─────────────────
+        LocalTime startLocalTime = null;
+        if (hasStartTime) {
+            try {
+                startLocalTime = LocalTime.parse(timeStrStart, DateTimeFormatter.ofPattern("HH:mm"));
+            } catch (Exception e) {
+                showAlert(Alert.AlertType.ERROR, "Giờ bắt đầu không hợp lệ",
+                        "Giờ bắt đầu phải đúng định dạng HH:mm. Ví dụ: 09:00");
+                return;
+            }
+        }
+
         // ── 5. Validate: thời gian kết thúc phải ở tương lai ─────────────
-        LocalDateTime endDateTime = LocalDateTime.of(date, endLocalTime);
+        LocalDateTime endDateTime = LocalDateTime.of(dateEnd, endLocalTime);
         LocalDateTime now = LocalDateTime.now();
 
         if (!endDateTime.isAfter(now)) {
@@ -195,11 +219,31 @@ public class CreateItemController {
             return;
         }
 
+        // ── 5b. Validate: thời gian bắt đầu (nếu có) ─────────────────────
+        LocalDateTime startDateTime = null;
+        long startTimeMs = 0;
+        if (hasStartDate && startLocalTime != null) {
+            startDateTime = LocalDateTime.of(dateStart, startLocalTime);
+            if (!startDateTime.isAfter(now)) {
+                showAlert(Alert.AlertType.ERROR, "Thời gian bắt đầu không hợp lệ",
+                        "Thời gian bắt đầu phải ở tương lai!");
+                return;
+            }
+            if (!startDateTime.isBefore(endDateTime)) {
+                showAlert(Alert.AlertType.ERROR, "Thời gian không hợp lệ",
+                        "Thời gian bắt đầu phải trước thời gian kết thúc!");
+                return;
+            }
+            startTimeMs = startDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        }
+
         // ── 6. FIX 2: Validate thời gian tối thiểu ───────────────────────
-        if (endDateTime.isBefore(now.plusMinutes(MIN_DURATION_MINUTES))) {
+        // Tính điểm bắt đầu thực tế để kiểm tra khoảng cách tối thiểu
+        LocalDateTime effectiveStart = (startDateTime != null) ? startDateTime : now;
+        if (endDateTime.isBefore(effectiveStart.plusMinutes(MIN_DURATION_MINUTES))) {
             showAlert(Alert.AlertType.ERROR, "Thời gian quá ngắn",
                     "Phiên đấu giá phải kéo dài ít nhất " + MIN_DURATION_MINUTES
-                            + " phút kể từ bây giờ.\n"
+                            + " phút kể từ lúc bắt đầu.\n"
                             + "Hãy chọn thời gian kết thúc muộn hơn.");
             return;
         }
@@ -230,6 +274,7 @@ public class CreateItemController {
         payload.addProperty("name",          name);
         payload.addProperty("description",   description);
         payload.addProperty("startingPrice", startingPrice);
+        payload.addProperty("startTime",     startTimeMs);
         payload.addProperty("endTime",       endTimeMs);
         payload.addProperty("category",      category);
 

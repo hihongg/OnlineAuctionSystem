@@ -41,6 +41,7 @@ public abstract class Item extends Entity implements Serializable {
     private double currentHighestBid;
     private String currentHighestBidder;
     private Status status;
+    private long   startTime; // timestamp milliseconds (0 = bắt đầu ngay khi đăng)
     private long   endTime;   // timestamp milliseconds
     private int    sellerId;
     private String category;  // "ELECTRONICS" | "ART" | "VEHICLE" | "GENERAL"
@@ -66,7 +67,7 @@ public abstract class Item extends Entity implements Serializable {
         this.status        = Status.OPEN;
     }
 
-    /** Constructor dùng khi Seller thêm sản phẩm mới */
+    /** Constructor dùng khi Seller thêm sản phẩm mới (không có startTime → bắt đầu ngay) */
     protected Item(String name, String description, double startingPrice,
                    long endTime, int sellerId) {
         super();
@@ -76,6 +77,22 @@ public abstract class Item extends Entity implements Serializable {
         this.currentHighestBid    = startingPrice;
         this.currentHighestBidder = "Chưa có";
         this.status        = Status.OPEN;
+        this.startTime     = 0;
+        this.endTime       = endTime;
+        this.sellerId      = sellerId;
+    }
+
+    /** Constructor dùng khi Seller thêm sản phẩm mới với startTime đặt lịch */
+    protected Item(String name, String description, double startingPrice,
+                   long startTime, long endTime, int sellerId) {
+        super();
+        this.name          = name;
+        this.description   = description;
+        this.startingPrice = startingPrice;
+        this.currentHighestBid    = startingPrice;
+        this.currentHighestBidder = "Chưa có";
+        this.status        = Status.OPEN;
+        this.startTime     = startTime;
         this.endTime       = endTime;
         this.sellerId      = sellerId;
     }
@@ -122,6 +139,9 @@ public abstract class Item extends Entity implements Serializable {
 
     public Status getStatus()              { return status; }
     public void   setStatus(Status status) { this.status = status; }
+
+    public long   getStartTime()               { return startTime; }
+    public void   setStartTime(long startTime) { this.startTime = startTime; }
 
     public long   getEndTime()             { return endTime; }
     public void   setEndTime(long endTime) { this.endTime = endTime; }

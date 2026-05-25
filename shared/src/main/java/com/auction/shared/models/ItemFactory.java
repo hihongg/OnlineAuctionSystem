@@ -45,14 +45,14 @@ public class ItemFactory {
     }
 
     /**
-     * Tạo Item mới khi Seller đăng sản phẩm (5 tham số).
+     * Tạo Item mới khi Seller đăng sản phẩm (không có startTime → bắt đầu ngay).
      *
-     * @param category  "ELECTRONICS" | "ART" | "VEHICLE"
-     * @param name      Tên sản phẩm
-     * @param description Mô tả
+     * @param category      "ELECTRONICS" | "ART" | "VEHICLE"
+     * @param name          Tên sản phẩm
+     * @param description   Mô tả
      * @param startingPrice Giá khởi điểm
-     * @param endTime   Thời điểm kết thúc (epoch milliseconds)
-     * @param sellerId  ID người bán
+     * @param endTime       Thời điểm kết thúc (epoch milliseconds)
+     * @param sellerId      ID người bán
      * @return Subclass tương ứng với category
      */
     public static Item create(String category,
@@ -67,6 +67,37 @@ public class ItemFactory {
             default:
                 return new Electronics(name, description, startingPrice, endTime, sellerId);
         }
+    }
+
+    /**
+     * Tạo Item mới khi Seller đặt lịch đấu giá (có cả startTime lẫn endTime).
+     *
+     * @param category      "ELECTRONICS" | "ART" | "VEHICLE"
+     * @param name          Tên sản phẩm
+     * @param description   Mô tả
+     * @param startingPrice Giá khởi điểm
+     * @param startTime     Thời điểm bắt đầu (epoch milliseconds); 0 = bắt đầu ngay
+     * @param endTime       Thời điểm kết thúc (epoch milliseconds)
+     * @param sellerId      ID người bán
+     * @return Subclass tương ứng với category
+     */
+    public static Item create(String category,
+                              String name, String description,
+                              double startingPrice, long startTime, long endTime, int sellerId) {
+        Item item;
+        switch (normalise(category)) {
+            case "ART":
+                item = new Art(name, description, startingPrice, startTime, endTime, sellerId);
+                break;
+            case "VEHICLE":
+                item = new Vehicle(name, description, startingPrice, startTime, endTime, sellerId);
+                break;
+            case "ELECTRONICS":
+            default:
+                item = new Electronics(name, description, startingPrice, startTime, endTime, sellerId);
+                break;
+        }
+        return item;
     }
 
     /**

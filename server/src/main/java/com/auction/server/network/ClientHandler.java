@@ -642,14 +642,33 @@ public class ClientHandler implements Runnable {
                 return;
             }
 
+            // Validate startTime (nếu có): phải ở tương lai và trước endTime
+            if (p.startTime > 0) {
+                if (p.startTime <= System.currentTimeMillis()) {
+                    sendMessage("FAIL:Thời gian bắt đầu phải ở tương lai");
+                    return;
+                }
+                if (p.startTime >= p.endTime) {
+                    sendMessage("FAIL:Thời gian bắt đầu phải trước thời gian kết thúc");
+                    return;
+                }
+            }
+
             String category    = (p.category != null && !p.category.trim().isEmpty())
                     ? p.category.trim().toUpperCase() : "ELECTRONICS";
             String description = (p.description != null) ? p.description.trim() : "";
             int    sellerId    = userDAO.getUserIdByUsername(loggedInUsername);
 
             // Factory Method: tạo đúng subclass (Electronics / Art / Vehicle)
-            Item newItem = ItemFactory.create(category, p.name.trim(), description,
-                    p.startingPrice, p.endTime, sellerId);
+            // Dùng overload 7 tham số khi có startTime, overload 6 tham số khi bắt đầu ngay
+            Item newItem;
+            if (p.startTime > 0) {
+                newItem = ItemFactory.create(category, p.name.trim(), description,
+                        p.startingPrice, p.startTime, p.endTime, sellerId);
+            } else {
+                newItem = ItemFactory.create(category, p.name.trim(), description,
+                        p.startingPrice, p.endTime, sellerId);
+            }
 
             // ── XỬ LÝ ẢNH BASE64 (MỚI) ───────────────────────────────────────
             // Nếu client gửi kèm ảnh thì giải mã và lưu vào thư mục uploads/.
@@ -1199,10 +1218,11 @@ public class ClientHandler implements Runnable {
         String name;
         String description;
         double startingPrice;
+        long   startTime;     // epoch ms; 0 hoặc không gửi = bắt đầu ngay khi đăng
         long   endTime;
         String category;      // ELECTRONICS | ART | VEHICLE (tuỳ chọn, mặc định ELECTRONICS)
-        String imageBase64;   // MỚI: ảnh encode Base64 (null nếu không có ảnh)
-        String imageExt;      // MỚI: phần mở rộng file: "jpg", "png", "gif"
+        String imageBase64;   // ảnh encode Base64 (null nếu không có ảnh)
+        String imageExt;      // phần mở rộng file: "jpg", "png", "gif"
     }
 
     /** Payload cho UPDATE_ITEM */

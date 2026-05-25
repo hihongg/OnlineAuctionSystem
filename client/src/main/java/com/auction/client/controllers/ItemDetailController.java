@@ -335,16 +335,39 @@ public class ItemDetailController {
         if (countdownTimeline != null) countdownTimeline.stop();
 
         countdownTimeline = new Timeline(new KeyFrame(Duration.seconds(1), event -> {
-            long remaining = currentItem.getEndTimeEpoch() - System.currentTimeMillis();
-            if (remaining <= 0) {
-                lblTime.setText("⏱ Đã kết thúc");
-                disableBidControls();
-                countdownTimeline.stop();
+            String status = currentItem.getStatus();
+
+            if ("OPEN".equals(status)) {
+                // Phiên chưa bắt đầu: đếm ngược đến startTime
+                long startEpoch = currentItem.getStartTimeEpoch();
+                if (startEpoch <= 0) {
+                    // startTime = 0 nghĩa là bắt đầu ngay khi đăng — không nên xảy ra ở đây
+                    lblTime.setText("⏱ Sắp bắt đầu...");
+                } else {
+                    long remaining = startEpoch - System.currentTimeMillis();
+                    if (remaining <= 0) {
+                        // Đã đến giờ bắt đầu, chờ server chuyển sang RUNNING
+                        lblTime.setText("⏱ Đang chờ kích hoạt...");
+                    } else {
+                        long hours   = remaining / 3_600_000;
+                        long minutes = (remaining % 3_600_000) / 60_000;
+                        long seconds = (remaining % 60_000) / 1_000;
+                        lblTime.setText(String.format("⏱ Bắt đầu sau: %02d:%02d:%02d", hours, minutes, seconds));
+                    }
+                }
             } else {
-                long hours   = remaining / 3_600_000;
-                long minutes = (remaining % 3_600_000) / 60_000;
-                long seconds = (remaining % 60_000) / 1_000;
-                lblTime.setText(String.format("⏱ Còn lại: %02d:%02d:%02d", hours, minutes, seconds));
+                // Phiên đang chạy hoặc trạng thái khác: đếm ngược đến endTime
+                long remaining = currentItem.getEndTimeEpoch() - System.currentTimeMillis();
+                if (remaining <= 0) {
+                    lblTime.setText("⏱ Đã kết thúc");
+                    disableBidControls();
+                    countdownTimeline.stop();
+                } else {
+                    long hours   = remaining / 3_600_000;
+                    long minutes = (remaining % 3_600_000) / 60_000;
+                    long seconds = (remaining % 60_000) / 1_000;
+                    lblTime.setText(String.format("⏱ Còn lại: %02d:%02d:%02d", hours, minutes, seconds));
+                }
             }
         }));
         countdownTimeline.setCycleCount(Timeline.INDEFINITE);
@@ -397,7 +420,8 @@ public class ItemDetailController {
     private void updateStatusUI(String status) {
         if (lblStatus == null || status == null) return;
         switch (status) {
-            case "RUNNING"  -> { lblStatus.setText("🟢 Đang diễn ra"); lblStatus.setStyle("-fx-text-fill: #27ae60; -fx-font-weight: bold;"); }
+            case "OPEN"     -> { lblStatus.setText("🟡 Sắp diễn ra");  lblStatus.setStyle("-fx-text-fill: #f39c12; -fx-font-weight: bold;"); disableBidControls(); }
+            case "RUNNING"  -> { lblStatus.setText("🟢 Đang diễn ra"); lblStatus.setStyle("-fx-text-fill: #27ae60; -fx-font-weight: bold;"); enableBidControls(); }
             case "FINISHED",
                  "PAID"     -> { lblStatus.setText("🔴 Đã kết thúc");   lblStatus.setStyle("-fx-text-fill: #e74c3c; -fx-font-weight: bold;"); disableBidControls(); }
             case "CANCELED" -> { lblStatus.setText("⛔ Đã hủy");        lblStatus.setStyle("-fx-text-fill: #95a5a6; -fx-font-weight: bold;"); disableBidControls(); }
@@ -408,6 +432,11 @@ public class ItemDetailController {
     private void disableBidControls() {
         if (txtBidAmount != null) txtBidAmount.setDisable(true);
         if (btnPlaceBid  != null) btnPlaceBid.setDisable(true);
+    }
+
+    private void enableBidControls() {
+        if (txtBidAmount != null) txtBidAmount.setDisable(false);
+        if (btnPlaceBid  != null) btnPlaceBid.setDisable(false);
     }
 
     private void showMessage(String msg, boolean isSuccess) {

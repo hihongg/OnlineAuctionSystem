@@ -26,6 +26,7 @@ public class AuctionItem {
     private double currentHighestBid;
     private String currentHighestBidder;
     private String status;      // "OPEN" | "RUNNING" | "FINISHED" | "PAID" | "CANCELED"
+    private long   startTime;   // epoch milliseconds (0 = bắt đầu ngay khi đăng)
     private long   endTime;     // epoch milliseconds (khớp Item.endTime)
     private int    sellerId;
     private String category;    // "ELECTRONICS" | "ART" | "VEHICLE"
@@ -58,6 +59,7 @@ public class AuctionItem {
     public double getStartingPrice()          { return startingPrice; }
     public String getCurrentHighestBidder()   { return currentHighestBidder; }
     public String getStatus()                 { return status; }
+    public long   getStartTimeEpoch()         { return startTime; }
     public long   getEndTimeEpoch()           { return endTime; }
     public int    getSellerId()               { return sellerId; }
     public String getCategory()               { return category; }

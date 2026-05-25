@@ -24,6 +24,12 @@ public class Art extends Item {
         super(name, description, startingPrice, endTime, sellerId);
     }
 
+    /** Constructor dùng khi Seller đặt lịch đấu giá (có startTime) */
+    public Art(String name, String description, double startingPrice,
+               long startTime, long endTime, int sellerId) {
+        super(name, description, startingPrice, startTime, endTime, sellerId);
+    }
+
     public Art(String name, String description, double startingPrice,
                long endTime, int sellerId,
                String artist, String artStyle, int yearCreated) {

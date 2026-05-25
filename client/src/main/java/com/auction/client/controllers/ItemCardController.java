@@ -20,8 +20,22 @@ public class ItemCardController {
     public void setData(AuctionItem item, Runnable onClickAction) {
         lblName.setText(item.getName());
         lblPrice.setText(String.format("$%.2f", item.getCurrentBid()));
-        lblTime.setText(item.getEndTime().isBefore(java.time.LocalDateTime.now())
-                ? "🔴 Đã kết thúc" : "🟢 Đang diễn ra");
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        java.time.LocalDateTime startTime = item.getStartTimeEpoch() > 0
+                ? java.time.LocalDateTime.ofInstant(
+                java.time.Instant.ofEpochMilli(item.getStartTimeEpoch()),
+                java.time.ZoneId.systemDefault())
+                : null;
+
+        String statusText;
+        if (item.getEndTime().isBefore(now)) {
+            statusText = "🔴 Đã kết thúc";
+        } else if (startTime != null && startTime.isAfter(now)) {
+            statusText = "🟡 Sắp diễn ra";
+        } else {
+            statusText = "🟢 Đang diễn ra";
+        }
+        lblTime.setText(statusText);
 
         loadImage(item);
 

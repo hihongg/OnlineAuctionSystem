@@ -115,6 +115,25 @@
                        style="-fx-font-size: 14; -fx-padding: 10;"/>
         </VBox>
 
+        <!-- ── Hạn bắt đầu đấu giá ── -->
+        <VBox spacing="5.0">
+            <Label text="Thời gian bắt đầu đấu giá (Ngày &amp; Giờ):"
+                   style="-fx-font-weight: bold; -fx-text-fill: #34495e; -fx-font-size: 14;"/>
+            <Label text="(Để trống = bắt đầu ngay khi đăng)"
+                   style="-fx-text-fill: #95a5a6; -fx-font-size: 12;"/>
+            <HBox spacing="10.0">
+                <DatePicker fx:id="datePickerStart"
+                            promptText="Chọn ngày"
+                            style="-fx-font-size: 14; -fx-padding: 4;"
+                            HBox.hgrow="ALWAYS"
+                            maxWidth="Infinity"/>
+                <TextField fx:id="txtTimeStart"
+                           promptText="HH:mm  (VD: 09:00)"
+                           prefWidth="160.0"
+                           style="-fx-font-size: 14; -fx-padding: 10;"/>
+            </HBox>
+        </VBox>
+
         <!-- ── Hạn chót đấu giá ── -->
         <VBox spacing="5.0">
             <Label text="Hạn chót đấu giá (Ngày &amp; Giờ):"

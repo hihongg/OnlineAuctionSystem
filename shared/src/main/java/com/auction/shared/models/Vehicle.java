@@ -25,6 +25,12 @@ public class Vehicle extends Item {
         super(name, description, startingPrice, endTime, sellerId);
     }
 
+    /** Constructor dùng khi Seller đặt lịch đấu giá (có startTime) */
+    public Vehicle(String name, String description, double startingPrice,
+                   long startTime, long endTime, int sellerId) {
+        super(name, description, startingPrice, startTime, endTime, sellerId);
+    }
+
     public Vehicle(String name, String description, double startingPrice,
                    long endTime, int sellerId,
                    String make, String model, int year, int mileage) {

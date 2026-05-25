@@ -23,10 +23,16 @@ public class Electronics extends Item {
         super(id, name, startingPrice);
     }
 
-    // Constructor dùng khi Seller tạo mới
+    // Constructor dùng khi Seller tạo mới (bắt đầu ngay)
     public Electronics(String name, String description, double startingPrice,
                        long endTime, int sellerId) {
         super(name, description, startingPrice, endTime, sellerId);
+    }
+
+    // Constructor dùng khi Seller đặt lịch đấu giá (có startTime)
+    public Electronics(String name, String description, double startingPrice,
+                       long startTime, long endTime, int sellerId) {
+        super(name, description, startingPrice, startTime, endTime, sellerId);
     }
 
     // Thêm thông tin bảo hành — đặc trưng Electronics
