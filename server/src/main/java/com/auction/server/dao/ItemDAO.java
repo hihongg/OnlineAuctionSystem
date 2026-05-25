@@ -14,24 +14,48 @@ import java.util.List;
 public class ItemDAO {
 
     // =========================================================================
-    // 1. Lấy sản phẩm hiển thị cho Dashboard (tất cả trừ CANCELED)
+    // 1a. getActiveItems() — chỉ trả về phiên đang HOẠT ĐỘNG (OPEN / RUNNING)
     //
-    // FIX: Trước đây chỉ trả về OPEN/RUNNING → item vừa hết hạn (FINISHED)
-    //   biến mất khỏi dashboard ngay lập tức, người dùng không thấy kết quả.
+    // Dùng cho: logic nghiệp vụ, kiểm tra điều kiện đặt giá, unit test.
+    // Ngữ nghĩa rõ ràng: "active" = phiên chưa kết thúc.
     //
-    // Giờ trả về tất cả trạng thái TRỪ CANCELED, sắp xếp theo thứ tự:
-    //   ① RUNNING (đang diễn ra) → hiện lên đầu
-    //   ② OPEN    (sắp bắt đầu)
-    //   ③ FINISHED / PAID        → hiện ở cuối với badge "Đã kết thúc"
-    //
-    // Phù hợp với UX của eBay: người dùng thấy cả phiên đang chạy lẫn đã kết thúc.
+    // Thứ tự: RUNNING trước (đang diễn ra), OPEN sau (sắp bắt đầu),
+    //         trong cùng nhóm sắp xếp theo end_time tăng dần (sắp hết giờ lên đầu).
     // =========================================================================
     public List<Item> getActiveItems() {
         List<Item> items = new ArrayList<>();
 
-        // FIELD() trả về vị trí của status trong danh sách ưu tiên:
-        //   RUNNING=1, OPEN=2, FINISHED=3, PAID=4 → sắp xếp tăng dần
-        // Trong cùng nhóm, sắp xếp theo end_time giảm dần (mới nhất lên đầu)
+        String sql = "SELECT * FROM items "
+                + "WHERE status IN ('OPEN', 'RUNNING') "
+                + "ORDER BY FIELD(status, 'RUNNING', 'OPEN'), end_time ASC";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+
+            while (rs.next()) {
+                items.add(mapResultSetToItem(rs));
+            }
+        } catch (SQLException e) {
+            System.err.println("[ItemDAO] getActiveItems lỗi: " + e.getMessage());
+        }
+        return items;
+    }
+
+    // =========================================================================
+    // 1b. getDashboardItems() — trả về TẤT CẢ trừ CANCELED (dành cho Dashboard)
+    //
+    // UX theo phong cách eBay: người dùng thấy cả phiên đang chạy lẫn đã kết
+    // thúc để biết kết quả, thay vì chúng biến mất ngay khi FINISHED.
+    //
+    // Thứ tự: RUNNING → OPEN → FINISHED → PAID (dùng FIELD() để ưu tiên).
+    //         Trong cùng nhóm sắp xếp theo end_time giảm dần (mới nhất lên đầu).
+    //
+    // Dùng cho: ClientHandler.handleGetItems(), AuctionService.getActiveAuctions().
+    // =========================================================================
+    public List<Item> getDashboardItems() {
+        List<Item> items = new ArrayList<>();
+
         String sql = "SELECT * FROM items "
                 + "WHERE status != 'CANCELED' "
                 + "ORDER BY FIELD(status, 'RUNNING', 'OPEN', 'FINISHED', 'PAID'), "
@@ -45,7 +69,7 @@ public class ItemDAO {
                 items.add(mapResultSetToItem(rs));
             }
         } catch (SQLException e) {
-            System.err.println("[ItemDAO] getActiveItems lỗi: " + e.getMessage());
+            System.err.println("[ItemDAO] getDashboardItems lỗi: " + e.getMessage());
         }
         return items;
     }

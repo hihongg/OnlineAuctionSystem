@@ -304,10 +304,12 @@ public class ClientHandler implements Runnable {
     // HANDLER: GET_ITEMS
     // =========================================================================
     private void handleGetItems() {
-        List<Item> items = itemDAO.getActiveItems();
+        // getDashboardItems() trả về tất cả trừ CANCELED (kể cả FINISHED)
+        // để người dùng thấy kết quả phiên vừa kết thúc trên dashboard.
+        List<Item> items = itemDAO.getDashboardItems();
         String json = gson.toJson(items);
         sendMessage("SUCCESS:" + json);
-        System.out.println("[HANDLER] Gửi " + items.size() + " sản phẩm RUNNING cho client.");
+        System.out.println("[HANDLER] Gửi " + items.size() + " sản phẩm cho client.");
     }
 
     // =========================================================================

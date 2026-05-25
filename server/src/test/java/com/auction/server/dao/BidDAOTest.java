@@ -30,6 +30,21 @@ public class BidDAOTest {
     private int testItemId = -1;
     private String testItemName;
 
+    /**
+     * Danh sách username dùng trong các test.
+     *
+     * BidDAO.placeBidTransaction() tra cứu bảng users để kiểm tra số dư;
+     * nếu username không tồn tại sẽ trả về "ERROR: Không tìm thấy tài khoản
+     * người đặt giá." và mọi assertion thành công đều fail.
+     *
+     * FIX: setUp() INSERT các user này với balance 100 000 đủ lớn;
+     *      tearDown() DELETE để không ô nhiễm dữ liệu giữa các test.
+     */
+    private static final String[] TEST_USERNAMES = {
+            "user_A", "user_B", "user_C", "user_D",
+            "user_E", "user_F", "user_G", "user_H"
+    };
+
     // =========================================================================
     // SETUP & TEARDOWN
     // =========================================================================
@@ -39,7 +54,24 @@ public class BidDAOTest {
         bidDAO = new BidDAO();
         testItemName = "BidTestItem_" + System.currentTimeMillis();
 
-        // Tạo item RUNNING với giá khởi điểm 500.0
+        // ── Tạo các user test với balance đủ lớn ────────────────────────────
+        // INSERT IGNORE: nếu username đã tồn tại thì bỏ qua, tránh lỗi DUPLICATE KEY
+        // khi test chạy lại mà tearDown() trước đó bị bỏ qua (ví dụ test crash).
+        String insertUserSql =
+                "INSERT IGNORE INTO users (username, password, email, role, balance) "
+                        + "VALUES (?, 'testhash000000000000000000000000000000000000000000000000000000000', "
+                        + "?, 'BIDDER', 100000.00)";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(insertUserSql)) {
+            for (String u : TEST_USERNAMES) {
+                pstmt.setString(1, u);
+                pstmt.setString(2, u + "@bidtest.com");
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch();
+        }
+
+        // ── Tạo item RUNNING với giá khởi điểm 500.0 ────────────────────────
         String sql = "INSERT INTO items (name, description, starting_price, current_highest_bid, "
                 + "highest_bidder, status, end_time, seller_id) "
                 + "VALUES (?, 'Test bid item', 500.0, 500.0, 'Chưa có', 'RUNNING', ?, 1)";
@@ -79,6 +111,17 @@ public class BidDAOTest {
                     pstmt.executeUpdate();
                 }
             }
+        }
+
+        // ── Xóa các user test đã tạo trong setUp() ──────────────────────────
+        String deleteUserSql = "DELETE FROM users WHERE username = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(deleteUserSql)) {
+            for (String u : TEST_USERNAMES) {
+                pstmt.setString(1, u);
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch();
         }
     }
 

@@ -122,10 +122,12 @@ public class AuctionService {
     }
 
     // =========================================================================
-    // LẤY DANH SÁCH PHIÊN ĐANG HOẠT ĐỘNG
+    // LẤY DANH SÁCH PHIÊN CHO DASHBOARD
     // =========================================================================
     public List<Item> getActiveAuctions() {
-        return itemDAO.getActiveItems();
+        // getDashboardItems() trả về tất cả trừ CANCELED (kể cả FINISHED)
+        // để Dashboard hiển thị kết quả phiên vừa kết thúc.
+        return itemDAO.getDashboardItems();
     }
 
     // NOTE: placeBid() đã bị xóa (dead code).
