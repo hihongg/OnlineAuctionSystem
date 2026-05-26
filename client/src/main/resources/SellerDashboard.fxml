@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox prefHeight="700.0" prefWidth="1100.0" spacing="20"
+      xmlns="http://javafx.com/javafx/17"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.auction.client.controllers.SellerDashboardController"
+      style="-fx-padding: 30; -fx-background-color: #000000;">
+
+    <!-- ── Header ──────────────────────────────────────────────────── -->
+    <HBox alignment="CENTER_LEFT" spacing="15"
+          style="-fx-background-color: #000000; -fx-padding: 15;
+                 -fx-background-radius: 10; -fx-border-color: #222222;
+                 -fx-border-radius: 10; -fx-border-width: 1;">
+        <Label text="📦 QUẢN LÝ SẢN PHẨM CỦA TÔI"
+               style="-fx-font-size: 24; -fx-font-weight: bold; -fx-text-fill: #F8C938;"/>
+        <Region HBox.hgrow="ALWAYS"/>
+        <Label fx:id="lblItemCount"
+               style="-fx-font-size: 13; -fx-text-fill: #aaaaaa;"/>
+        <Button text="➕ Đăng sản phẩm mới" onAction="#handleCreateNew"
+                style="-fx-background-color: #3665F3; -fx-text-fill: white;
+                       -fx-font-size: 13; -fx-font-weight: bold;
+                       -fx-padding: 8 18 8 18; -fx-background-radius: 20; -fx-cursor: hand;"/>
+        <Button text="🔄 Làm mới" onAction="#handleRefresh"
+                style="-fx-background-color: #111111; -fx-text-fill: white;
+                       -fx-font-size: 13; -fx-font-weight: bold;
+                       -fx-padding: 8 16 8 16; -fx-background-radius: 20; -fx-cursor: hand;"/>
+        <Button text="◀ Quay lại Dashboard" onAction="#handleBack"
+                style="-fx-background-color: transparent; -fx-text-fill: #aaaaaa;
+                       -fx-font-size: 13; -fx-cursor: hand;"/>
+        <Button text="Đăng xuất" onAction="#handleLogout"
+                style="-fx-background-color: transparent; -fx-text-fill: #e74c3c;
+                       -fx-font-weight: bold; -fx-cursor: hand;"/>
+    </HBox>
+
+    <!-- ── Bộ lọc trạng thái ──────────────────────────────────────── -->
+    <HBox alignment="CENTER_LEFT" spacing="10">
+        <Label text="Lọc theo trạng thái:"
+               style="-fx-text-fill: #aaaaaa; -fx-font-size: 13;"/>
+        <ComboBox fx:id="cmbFilter" prefWidth="160"
+                  style="-fx-background-color: #111111; -fx-text-fill: white;"/>
+        <Label fx:id="lblStatus"
+               style="-fx-text-fill: #F8C938; -fx-font-size: 13;"/>
+    </HBox>
+
+    <!-- ── TableView ──────────────────────────────────────────────── -->
+    <TableView fx:id="tblItems" VBox.vgrow="ALWAYS"
+               style="-fx-background-color: #111111; -fx-text-fill: white;
+                      -fx-border-color: #222222; -fx-border-radius: 8;
+                      -fx-table-cell-border-color: #222222;"
+               columnResizePolicy="CONSTRAINED_RESIZE_POLICY">
+
+        <columns>
+            <TableColumn fx:id="colId" text="ID" prefWidth="50"
+                         style="-fx-text-fill: white; -fx-alignment: CENTER;"/>
+            <TableColumn fx:id="colName" text="Tên sản phẩm" prefWidth="200"/>
+            <TableColumn fx:id="colCategory" text="Danh mục" prefWidth="110"/>
+            <TableColumn fx:id="colStartPrice" text="Giá khởi điểm" prefWidth="130"/>
+            <TableColumn fx:id="colCurrentBid" text="Giá hiện tại" prefWidth="130"/>
+            <TableColumn fx:id="colStatus" text="Trạng thái" prefWidth="110"/>
+            <TableColumn fx:id="colEndTime" text="Kết thúc" prefWidth="155"/>
+            <TableColumn fx:id="colActions" text="Thao tác" prefWidth="160"/>
+        </columns>
+
+        <placeholder>
+            <Label text="Bạn chưa có sản phẩm nào. Hãy đăng bán sản phẩm đầu tiên!"
+                   style="-fx-text-fill: #aaaaaa; -fx-font-size: 14;"/>
+        </placeholder>
+    </TableView>
+
+    <!-- ── Thống kê nhanh ─────────────────────────────────────────── -->
+    <HBox spacing="20" alignment="CENTER_LEFT">
+        <padding><Insets top="5" bottom="5"/></padding>
+        <Label fx:id="lblStatOpen"
+               style="-fx-text-fill: #3498db; -fx-font-size: 13;"/>
+        <Label fx:id="lblStatRunning"
+               style="-fx-text-fill: #2ecc71; -fx-font-size: 13;"/>
+        <Label fx:id="lblStatFinished"
+               style="-fx-text-fill: #F8C938; -fx-font-size: 13;"/>
+        <Label fx:id="lblStatCanceled"
+               style="-fx-text-fill: #e74c3c; -fx-font-size: 13;"/>
+    </HBox>
+
+</VBox>

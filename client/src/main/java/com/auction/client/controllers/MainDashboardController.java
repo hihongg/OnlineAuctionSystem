@@ -36,6 +36,7 @@ public class MainDashboardController implements Initializable {
     @FXML public Button    btnAdminPanel;
     @FXML public Button    btnWallet;
     @FXML public Button    btnWonItems;
+    @FXML public Button    btnMyItems;
 
     private final NavigationUtils navUtils = new NavigationUtils();
     private final Gson gson = new Gson();
@@ -62,6 +63,11 @@ public class MainDashboardController implements Initializable {
             if (btnWonItems != null && "BIDDER".equals(ClientService.currentRole)) {
                 btnWonItems.setVisible(true);
                 btnWonItems.setManaged(true);
+            }
+
+            if (btnMyItems != null && ("SELLER".equals(ClientService.currentRole) || "ADMIN".equals(ClientService.currentRole))) {
+                btnMyItems.setVisible(true);
+                btnMyItems.setManaged(true);
             }
 
             loadDataFromServer();
@@ -154,6 +160,12 @@ public class MainDashboardController implements Initializable {
         masterData.clear();
         if (itemGrid != null) itemGrid.getChildren().clear();
         loadDataFromServer();
+    }
+
+    @FXML
+    public void handleMyItems(ActionEvent event) {
+        try { navUtils.switchScene(event, "/SellerItems.fxml", "Sản phẩm của tôi"); }
+        catch (Exception ex) { ex.printStackTrace(); showAlert("Lỗi", "Không thể mở màn hình sản phẩm: " + ex.getMessage()); }
     }
 
     @FXML

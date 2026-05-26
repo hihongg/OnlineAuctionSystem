@@ -40,6 +40,14 @@
                        -fx-font-size: 13; -fx-font-weight: bold;
                        -fx-padding: 8 16 8 16; -fx-background-radius: 20; -fx-cursor: hand;"/>
 
+        <!-- Nút Sản phẩm của tôi — chỉ hiển thị khi currentRole = SELLER hoặc ADMIN -->
+        <Button fx:id="btnMyItems" text="🛍 Sản phẩm của tôi"
+                onAction="#handleMyItems"
+                visible="false" managed="false"
+                style="-fx-background-color: #8e44ad; -fx-text-fill: white;
+                       -fx-font-size: 13; -fx-font-weight: bold;
+                       -fx-padding: 8 16 8 16; -fx-background-radius: 20; -fx-cursor: hand;"/>
+
         <Button text="➕ Đăng bán sản phẩm" onAction="#handleCreateItem"
                 style="-fx-background-color: #3665F3; -fx-text-fill: white;
                        -fx-font-size: 14; -fx-font-weight: bold;

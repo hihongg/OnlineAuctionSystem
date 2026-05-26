@@ -25,12 +25,12 @@ CREATE TABLE IF NOT EXISTS users (
 -- Admin mặc định để test
 -- QUAN TRỌNG: password phải là SHA-256 của chuỗi gốc, vì UserDAO.hashPassword() dùng SHA-256.
 --   SHA-256('admin123') = 240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9
---   SHA-256('seller123') = 5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8  (= 'password')
+--   SHA-256('seller123') = 2a76110d06bcc4fd437337b984131cfa82db9f792e3e2340acef9f3066b264e0
 --   Tính hash mới: echo -n "chuỗi_của_bạn" | sha256sum
 INSERT IGNORE INTO users (username, password, email, role) VALUES
     ('admin',  '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'admin@auction.com',  'ADMIN'),
-    ('seller1', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'seller1@auction.com', 'SELLER'), -- 'password8'
-    ('bidder1', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'bidder1@auction.com', 'BIDDER'); -- 'password8'
+    ('seller1', '2a76110d06bcc4fd437337b984131cfa82db9f792e3e2340acef9f3066b264e0', 'seller1@auction.com', 'SELLER'), -- 'seller123'
+    ('bidder1', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'bidder1@auction.com', 'BIDDER'); -- 'password123'
 
 -- ------------------------------------------------------------
 -- Bảng sản phẩm đấu giá
