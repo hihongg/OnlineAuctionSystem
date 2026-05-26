@@ -245,7 +245,7 @@ mvn -pl client javafx:run
 | Username | Password    | Role   | Số dư |
 |----------|-------------|--------|-------|
 | admin    | admin123    | ADMIN  | —     |
-| seller1  | password123 | SELLER | —     |
+| seller1  | seller123   | SELLER | —     |
 | bidder1  | password123 | BIDDER | 0 $   |
 
 ---
