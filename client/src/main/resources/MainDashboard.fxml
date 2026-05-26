@@ -7,13 +7,13 @@
       xmlns="http://javafx.com/javafx/17"
       xmlns:fx="http://javafx.com/fxml/1"
       fx:controller="com.auction.client.controllers.MainDashboardController"
-      style="-fx-padding: 30; -fx-background-color: #F4F6F9;">
+      style="-fx-padding: 30; -fx-background-color: #000000;">
 
     <!-- ── Header ──────────────────────────────────────────────────── -->
     <HBox alignment="CENTER_LEFT" spacing="15"
-          style="-fx-background-color: white; -fx-padding: 15; -fx-background-radius: 10;">
-        <Label text="eBay Auction"
-               style="-fx-font-size: 28; -fx-font-weight: bold; -fx-text-fill: #0064D2;"/>
+          style="-fx-background-color: #000000; -fx-padding: 15; -fx-background-radius: 10; -fx-border-color: #222222; -fx-border-radius: 10; -fx-border-width: 1;">
+        <Label text="HỆ THỐNG ĐẤU GIÁ"
+               style="-fx-font-size: 28; -fx-font-weight: bold; -fx-text-fill: #F8C938;"/>
         <Region HBox.hgrow="ALWAYS"/>
 
         <!-- Nút Admin Panel — chỉ hiển thị khi currentRole = ADMIN (ẩn/hiện trong Controller) -->
@@ -55,21 +55,21 @@
                    prefWidth="450"
                    style="-fx-padding: 12 20 12 20; -fx-font-size: 14;
                           -fx-background-radius: 25; -fx-border-radius: 25;
-                          -fx-border-color: #3665F3; -fx-border-width: 1.5;
-                          -fx-background-color: white;"/>
+                          -fx-border-color: #F8C938; -fx-border-width: 1.5;
+                          -fx-background-color: #111111; -fx-text-fill: white;"/>
         <Button text="🔄 Làm mới" onAction="#handleRefresh"
-                style="-fx-background-color: white; -fx-text-fill: #3665F3;
+                style="-fx-background-color: #111111; -fx-text-fill: white;
                        -fx-font-size: 13; -fx-font-weight: bold;
                        -fx-padding: 10 22 10 22; -fx-background-radius: 25;
-                       -fx-border-radius: 25; -fx-border-color: #3665F3;
-                       -fx-border-width: 1.5; -fx-cursor: hand;"/>
+                       -fx-cursor: hand;"/>
     </HBox>
 
     <!-- ── Item grid ───────────────────────────────────────────────── -->
-    <ScrollPane fitToWidth="true" VBox.vgrow="ALWAYS"
-                style="-fx-background-color: transparent; -fx-background-insets: 0;">
+    <ScrollPane fitToWidth="true" fitToHeight="true" VBox.vgrow="ALWAYS"
+                style="-fx-background: #000000; -fx-background-color: #000000; -fx-control-inner-background: #000000; -fx-background-insets: 0; -fx-border-color: transparent;"
+                pannable="true">
         <FlowPane fx:id="itemGrid" hgap="20" vgap="20" alignment="TOP_LEFT"
-                  style="-fx-background-color: transparent;">
+                  style="-fx-background-color: #000000; -fx-background: #000000; -fx-padding: 10;">
             <padding>
                 <Insets top="10" right="10" bottom="10" left="10"/>
             </padding>

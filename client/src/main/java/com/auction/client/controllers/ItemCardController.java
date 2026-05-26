@@ -1,14 +1,15 @@
 package com.auction.client.controllers;
 
+import java.io.File;
+import java.net.URL;
+
 import com.auction.client.models.AuctionItem;
+
 import javafx.fxml.FXML;
 import javafx.scene.control.Label;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.VBox;
-
-import java.io.File;
-import java.net.URL;
 
 public class ItemCardController {
     @FXML public VBox      cardContainer;
@@ -40,13 +41,15 @@ public class ItemCardController {
         loadImage(item);
 
         // Sự kiện click và Hover
+        cardContainer.setStyle("-fx-background-color: #111111; -fx-background-radius: 12; -fx-padding: 15; " +
+                "-fx-cursor: hand; -fx-border-color: #222222; -fx-border-radius: 12; -fx-border-width: 1;");
         cardContainer.setOnMouseClicked(event -> onClickAction.run());
         cardContainer.setOnMouseEntered(e -> cardContainer.setStyle(
-                "-fx-background-color: white; -fx-background-radius: 12; -fx-padding: 15; " +
-                        "-fx-cursor: hand; -fx-border-color: #0064D2; -fx-border-radius: 12; -fx-border-width: 1.5;"));
+                "-fx-background-color: #181818; -fx-background-radius: 12; -fx-padding: 15; " +
+                        "-fx-cursor: hand; -fx-border-color: #F8C938; -fx-border-radius: 12; -fx-border-width: 1.5;"));
         cardContainer.setOnMouseExited(e -> cardContainer.setStyle(
-                "-fx-background-color: white; -fx-background-radius: 12; -fx-padding: 15; " +
-                        "-fx-cursor: hand; -fx-border-color: #E5E7EB; -fx-border-radius: 12; -fx-border-width: 1;"));
+                "-fx-background-color: #111111; -fx-background-radius: 12; -fx-padding: 15; " +
+                        "-fx-cursor: hand; -fx-border-color: #222222; -fx-border-radius: 12; -fx-border-width: 1;"));
     }
 
     /**

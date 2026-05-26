@@ -242,11 +242,11 @@ mvn -pl client javafx:run
 
 ## Tài khoản test
 
-| Username | Password  | Role   | Số dư  |
-|----------|-----------|--------|--------|
-| admin    | admin123  | ADMIN  | —      |
-| seller1  | seller123 | SELLER | —      |
-| bidder1  | bidder123 | BIDDER | $1 000 |
+| Username | Password    | Role   | Số dư |
+|----------|-------------|--------|-------|
+| admin    | admin123    | ADMIN  | —     |
+| seller1  | password123 | SELLER | —     |
+| bidder1  | password123 | BIDDER | 0 $   |
 
 ---
 
