@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?import javafx.scene.layout.*?>
 <?import javafx.scene.control.*?>
+<?import javafx.geometry.Insets?>
 
 <HBox prefHeight="500.0" prefWidth="800.0"
       alignment="CENTER"
@@ -22,6 +23,18 @@
 
         <PasswordField fx:id="txtConfirmPassword" promptText="Confirm Password"
                        style="-fx-pref-height: 40; -fx-background-radius: 5;"/>
+
+        <!-- Role selection -->
+        <fx:define>
+            <ToggleGroup fx:id="roleGroup"/>
+        </fx:define>
+        <HBox alignment="CENTER" spacing="15.0">
+            <Label text="Role:" style="-fx-text-fill: white; -fx-font-size: 14; -fx-font-weight: bold;"/>
+            <RadioButton fx:id="radioBidder" text="Bidder" toggleGroup="$roleGroup" selected="true"
+                         style="-fx-text-fill: white; -fx-font-size: 13;"/>
+            <RadioButton fx:id="radioSeller" text="Seller" toggleGroup="$roleGroup"
+                         style="-fx-text-fill: white; -fx-font-size: 13;"/>
+        </HBox>
 
         <CheckBox text="I agree to the terms..." style="-fx-text-fill: white;"/>
 

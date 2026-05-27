@@ -46,6 +46,12 @@ public class WalletController implements Initializable {
     @Override
     public void initialize(URL location, ResourceBundle resources) {
         try {
+            // ADMIN không có ví – chặn truy cập ngay từ đầu
+            if ("ADMIN".equals(ClientService.currentRole)) {
+                System.err.println("[WalletController] ADMIN không được phép truy cập Ví.");
+                return;
+            }
+
             if (lblUsername != null && ClientService.currentUsername != null) {
                 lblUsername.setText(ClientService.currentUsername
                         + " (" + ClientService.currentRole + ")");
@@ -54,16 +60,13 @@ public class WalletController implements Initializable {
             if (lblMessage != null) lblMessage.setText("");
             loadBalance();
 
-            // Điều chỉnh UI theo vai trò
-            boolean isAdmin = "ADMIN".equals(ClientService.currentRole);
+            // Wallet chỉ dành cho BIDDER và SELLER
             if (lblDepositTitle != null)
-                lblDepositTitle.setText(isAdmin ? "Nạp tiền vào ví (trực tiếp)" : "Gửi yêu cầu nạp tiền");
+                lblDepositTitle.setText("Nạp tiền vào ví");
             if (lblDepositNote != null)
-                lblDepositNote.setText(isAdmin
-                        ? "Với tư cách Admin, tiền sẽ được cộng ngay vào ví."
-                        : "Yêu cầu sẽ được gửi đến Admin để xem xét và phê duyệt.");
+                lblDepositNote.setText("Yêu cầu sẽ được gửi đến Admin để xem xét và phê duyệt.");
             if (btnDeposit != null)
-                btnDeposit.setText(isAdmin ? "Nạp tiền ngay" : "Gửi yêu cầu");
+                btnDeposit.setText("Gửi yêu cầu");
         } catch (Exception e) {
             System.err.println("[WalletController] Lỗi khởi tạo: " + e.getMessage());
             e.printStackTrace();
@@ -143,8 +146,7 @@ public class WalletController implements Initializable {
         if (amount <= 0)       { setMessage("⚠ Số tiền phải lớn hơn 0.", false); return; }
         if (amount > 100_000)  { setMessage("⚠ Mỗi lần tối đa $100,000.", false); return; }
 
-        boolean isAdmin = "ADMIN".equals(ClientService.currentRole);
-        String command = isAdmin ? ("ADMIN_DEPOSIT:" + amount) : ("DEPOSIT_REQUEST:" + amount);
+        String command = "DEPOSIT_REQUEST:" + amount;
         setMessage("⏳ Đang xử lý...", true);
 
         Task<String> task = new Task<String>() {
@@ -157,17 +159,8 @@ public class WalletController implements Initializable {
             Platform.runLater(() -> {
                 if (res != null && res.startsWith("SUCCESS:")) {
                     String payload = res.substring("SUCCESS:".length());
-                    if (isAdmin) {
-                        // Admin: payload là số dư mới
-                        if (lblBalance != null) lblBalance.setText("$" + formatAmount(payload));
-                        if (txtAmount  != null) txtAmount.clear();
-                        setMessage("✅ Nạp $" + String.format("%.2f", amount)
-                                + " thành công! Số dư mới: $" + formatAmount(payload), true);
-                    } else {
-                        // Bidder/Seller: payload là thông báo xác nhận
-                        if (txtAmount != null) txtAmount.clear();
-                        setMessage("✅ " + payload, true);
-                    }
+                    if (txtAmount != null) txtAmount.clear();
+                    setMessage("✅ " + payload, true);
                 } else {
                     String reason = (res != null && res.startsWith("FAIL:"))
                             ? res.substring(5) : "Lỗi không xác định";

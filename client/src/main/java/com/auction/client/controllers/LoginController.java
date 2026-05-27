@@ -8,7 +8,9 @@ import javafx.fxml.FXML;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.PasswordField;
+import javafx.scene.control.RadioButton;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleGroup;
 import javafx.event.ActionEvent;
 
 public class LoginController {
@@ -17,6 +19,9 @@ public class LoginController {
     @FXML public PasswordField txtPassword;
     @FXML public PasswordField txtConfirmPassword;
     @FXML public Button        btnLogin;
+    @FXML public RadioButton   radioBidder;
+    @FXML public RadioButton   radioSeller;
+    @FXML public ToggleGroup   roleGroup;
 
     private final NavigationUtils navUtils = new NavigationUtils();
 
@@ -92,9 +97,18 @@ public class LoginController {
             return;
         }
 
+        // Determine selected role; default to BIDDER if no RadioButton is present
+        String role = "BIDDER";
+        if (radioSeller != null && radioSeller.isSelected()) {
+            role = "SELLER";
+        } else if (radioBidder != null && radioBidder.isSelected()) {
+            role = "BIDDER";
+        }
+
+        final String selectedRole = role;
         Task<String> task = new Task<>() {
             @Override protected String call() {
-                return ClientService.sendRequest("REGISTER:" + username + ":" + password);
+                return ClientService.sendRequest("REGISTER:" + username + ":" + password + ":" + selectedRole);
             }
         };
 

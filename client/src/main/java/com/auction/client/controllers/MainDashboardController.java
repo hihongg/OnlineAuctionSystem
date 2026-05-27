@@ -56,7 +56,6 @@ public class MainDashboardController implements Initializable {
             }
 
             if (btnWallet != null && ("BIDDER".equals(ClientService.currentRole) ||
-                    "ADMIN".equals(ClientService.currentRole) ||
                     "SELLER".equals(ClientService.currentRole))) {
                 btnWallet.setVisible(true);
                 btnWallet.setManaged(true);
