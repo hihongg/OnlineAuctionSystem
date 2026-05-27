@@ -9,79 +9,64 @@
       fx:controller="com.auction.client.controllers.MainDashboardController"
       style="-fx-padding: 30; -fx-background-color: #000000;">
 
-    <!-- ── Header ──────────────────────────────────────────────────── -->
     <HBox alignment="CENTER_LEFT" spacing="15"
           style="-fx-background-color: #000000; -fx-padding: 15; -fx-background-radius: 10; -fx-border-color: #222222; -fx-border-radius: 10; -fx-border-width: 1;">
         <Label text="HỆ THỐNG ĐẤU GIÁ"
                style="-fx-font-size: 28; -fx-font-weight: bold; -fx-text-fill: #F8C938;"/>
         <Region HBox.hgrow="ALWAYS"/>
 
-        <!-- Nút Admin Panel — chỉ hiển thị khi currentRole = ADMIN (ẩn/hiện trong Controller) -->
         <Button fx:id="btnAdminPanel" text="⚙ Admin Panel"
                 onAction="#handleAdminPanel"
                 visible="false" managed="false"
-                style="-fx-background-color: #2c3e50; -fx-text-fill: white;
-                       -fx-font-size: 13; -fx-font-weight: bold;
-                       -fx-padding: 8 16 8 16; -fx-background-radius: 20; -fx-cursor: hand;"/>
+                style="-fx-background-color: #2c3e50; -fx-text-fill: white; -fx-font-size: 13; -fx-font-weight: bold; -fx-padding: 8 16 8 16; -fx-background-radius: 20; -fx-cursor: hand;"/>
 
-        <!-- Nút Ví tiền — chỉ hiển thị khi currentRole = BIDDER -->
         <Button fx:id="btnWallet" text="💰 Ví của tôi"
                 onAction="#handleWallet"
                 visible="false" managed="false"
-                style="-fx-background-color: #27ae60; -fx-text-fill: white;
-                       -fx-font-size: 13; -fx-font-weight: bold;
-                       -fx-padding: 8 16 8 16; -fx-background-radius: 20; -fx-cursor: hand;"/>
+                style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-size: 13; -fx-font-weight: bold; -fx-padding: 8 16 8 16; -fx-background-radius: 20; -fx-cursor: hand;"/>
 
-        <!-- Nút Giỏ hàng — chỉ hiển thị khi currentRole = BIDDER -->
         <Button fx:id="btnWonItems" text="🛒 Giỏ hàng"
                 onAction="#handleWonItems"
                 visible="false" managed="false"
-                style="-fx-background-color: #e67e22; -fx-text-fill: white;
-                       -fx-font-size: 13; -fx-font-weight: bold;
-                       -fx-padding: 8 16 8 16; -fx-background-radius: 20; -fx-cursor: hand;"/>
+                style="-fx-background-color: #e67e22; -fx-text-fill: white; -fx-font-size: 13; -fx-font-weight: bold; -fx-padding: 8 16 8 16; -fx-background-radius: 20; -fx-cursor: hand;"/>
 
-        <!-- Nút Sản phẩm của tôi — chỉ hiển thị khi currentRole = SELLER hoặc ADMIN -->
         <Button fx:id="btnMyItems" text="🛍 Sản phẩm của tôi"
                 onAction="#handleMyItems"
                 visible="false" managed="false"
-                style="-fx-background-color: #8e44ad; -fx-text-fill: white;
-                       -fx-font-size: 13; -fx-font-weight: bold;
-                       -fx-padding: 8 16 8 16; -fx-background-radius: 20; -fx-cursor: hand;"/>
+                style="-fx-background-color: #8e44ad; -fx-text-fill: white; -fx-font-size: 13; -fx-font-weight: bold; -fx-padding: 8 16 8 16; -fx-background-radius: 20; -fx-cursor: hand;"/>
 
         <Button text="➕ Đăng bán sản phẩm" onAction="#handleCreateItem"
-                style="-fx-background-color: #3665F3; -fx-text-fill: white;
-                       -fx-font-size: 14; -fx-font-weight: bold;
-                       -fx-padding: 8 20 8 20; -fx-background-radius: 20; -fx-cursor: hand;"/>
+                style="-fx-background-color: #3665F3; -fx-text-fill: white; -fx-font-size: 14; -fx-font-weight: bold; -fx-padding: 8 20 8 20; -fx-background-radius: 20; -fx-cursor: hand;"/>
         <Button text="Đăng xuất" onAction="#handleLogout"
-                style="-fx-background-color: transparent; -fx-text-fill: #e74c3c;
-                       -fx-font-weight: bold; -fx-cursor: hand;"/>
+                style="-fx-background-color: transparent; -fx-text-fill: #e74c3c; -fx-font-weight: bold; -fx-cursor: hand;"/>
     </HBox>
 
-    <!-- ── Search bar ──────────────────────────────────────────────── -->
     <HBox alignment="CENTER_LEFT" spacing="15">
         <TextField fx:id="txtSearch" promptText="🔍 Tìm kiếm tên sản phẩm đấu giá..."
                    prefWidth="450"
-                   style="-fx-padding: 12 20 12 20; -fx-font-size: 14;
-                          -fx-background-radius: 25; -fx-border-radius: 25;
-                          -fx-border-color: #F8C938; -fx-border-width: 1.5;
-                          -fx-background-color: #111111; -fx-text-fill: white;"/>
+                   style="-fx-padding: 12 20 12 20; -fx-font-size: 14; -fx-background-radius: 25; -fx-border-radius: 25; -fx-border-color: #F8C938; -fx-border-width: 1.5; -fx-background-color: #111111; -fx-text-fill: white;"/>
         <Button text="🔄 Làm mới" onAction="#handleRefresh"
-                style="-fx-background-color: #111111; -fx-text-fill: white;
-                       -fx-font-size: 13; -fx-font-weight: bold;
-                       -fx-padding: 10 22 10 22; -fx-background-radius: 25;
-                       -fx-cursor: hand;"/>
+                style="-fx-background-color: #111111; -fx-text-fill: white; -fx-font-size: 13; -fx-font-weight: bold; -fx-padding: 10 22 10 22; -fx-background-radius: 25; -fx-cursor: hand;"/>
     </HBox>
 
-    <!-- ── Item grid ───────────────────────────────────────────────── -->
     <ScrollPane fitToWidth="true" fitToHeight="true" VBox.vgrow="ALWAYS"
                 style="-fx-background: #000000; -fx-background-color: #000000; -fx-control-inner-background: #000000; -fx-background-insets: 0; -fx-border-color: transparent;"
                 pannable="true">
-        <FlowPane fx:id="itemGrid" hgap="20" vgap="20" alignment="TOP_LEFT"
-                  style="-fx-background-color: #000000; -fx-background: #000000; -fx-padding: 10;">
+
+        <GridPane fx:id="itemGrid" hgap="20" vgap="20"
+                  style="-fx-background-color: #000000; -fx-padding: 10;">
+            <columnConstraints>
+                <ColumnConstraints percentWidth="25.0" hgrow="ALWAYS" />
+                <ColumnConstraints percentWidth="25.0" hgrow="ALWAYS" />
+                <ColumnConstraints percentWidth="25.0" hgrow="ALWAYS" />
+                <ColumnConstraints percentWidth="25.0" hgrow="ALWAYS" />
+            </columnConstraints>
+
             <padding>
                 <Insets top="10" right="10" bottom="10" left="10"/>
             </padding>
-        </FlowPane>
+        </GridPane>
+
     </ScrollPane>
 
 </VBox>

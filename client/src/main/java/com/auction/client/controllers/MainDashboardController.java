@@ -19,7 +19,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
-import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.GridPane;
 import javafx.stage.Stage;
 
 import java.io.IOException;
@@ -30,7 +30,7 @@ import java.util.ResourceBundle;
 
 public class MainDashboardController implements Initializable {
 
-    @FXML public FlowPane  itemGrid;
+    @FXML public GridPane  itemGrid;
     @FXML public TextField txtSearch;
     @FXML public Label     lblWelcome;
     @FXML public Button    btnAdminPanel;
@@ -55,7 +55,9 @@ public class MainDashboardController implements Initializable {
                 btnAdminPanel.setManaged(true);
             }
 
-            if (btnWallet != null && ("BIDDER".equals(ClientService.currentRole) || "ADMIN".equals(ClientService.currentRole))) {
+            if (btnWallet != null && ("BIDDER".equals(ClientService.currentRole) ||
+                    "ADMIN".equals(ClientService.currentRole) ||
+                    "SELLER".equals(ClientService.currentRole))) {
                 btnWallet.setVisible(true);
                 btnWallet.setManaged(true);
             }
@@ -129,13 +131,27 @@ public class MainDashboardController implements Initializable {
     private void renderCards(List<AuctionItem> items) {
         if (itemGrid == null) return;
         itemGrid.getChildren().clear();
+
+        int column = 0;
+        int row = 0;
+
         for (AuctionItem item : items) {
             try {
                 FXMLLoader loader = new FXMLLoader(getClass().getResource("/ItemCard.fxml"));
                 Parent card = loader.load();
                 ItemCardController controller = loader.getController();
                 controller.setData(item, () -> openItemDetails(item));
-                itemGrid.getChildren().add(card);
+
+                // Thêm sản phẩm vào lưới GridPane (truyền vào toạ độ cột và hàng)
+                itemGrid.add(card, column, row);
+
+                // Tăng cột lên 1, nếu đã đủ 4 cột (0, 1, 2, 3) thì reset về 0 và nhảy xuống hàng dưới
+                column++;
+                if (column == 4) {
+                    column = 0;
+                    row++;
+                }
+
             } catch (IOException ex) {
                 ex.printStackTrace();
             }
@@ -196,7 +212,24 @@ public class MainDashboardController implements Initializable {
     @FXML
     public void handleWallet(ActionEvent event) {
         try {
-            navUtils.switchScene(event, "/Wallet.fxml", "Ví của tôi");
+            // 1. Tạo loader với đường dẫn FXML
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/Wallet.fxml"));
+
+            // 2. Tự khởi tạo Controller và gán vào loader TRƯỚC KHI load
+            WalletController walletController = new WalletController();
+            loader.setController(walletController);
+
+            // 3. Load giao diện
+            Parent root = loader.load();
+
+            // 4. Lấy cửa sổ (Stage) hiện tại và chuyển cảnh
+            Stage stage = (Stage) ((javafx.scene.Node) event.getSource()).getScene().getWindow();
+
+            // Bạn có thể chỉnh lại kích thước Scene sao cho phù hợp với dashboard hiện tại
+            stage.setScene(new Scene(root, stage.getWidth(), stage.getHeight()));
+            stage.setTitle("Ví của tôi");
+            stage.show();
+
         } catch (Exception ex) {
             ex.printStackTrace();
             showAlert("Lỗi mở Ví", "Không thể mở màn hình Ví:\n" + ex.getMessage());

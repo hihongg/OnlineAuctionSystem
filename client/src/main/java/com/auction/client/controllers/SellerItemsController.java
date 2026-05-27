@@ -22,10 +22,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.ResourceBundle;
 
-/**
- * Controller màn hình "Sản phẩm của tôi" dành cho Seller / Admin.
- * Hiển thị danh sách sản phẩm đã đăng, cho phép Sửa hoặc Xóa.
- */
 public class SellerItemsController implements Initializable {
 
     @FXML public TableView<AuctionItem>       tableItems;
@@ -55,7 +51,9 @@ public class SellerItemsController implements Initializable {
         colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
         colEndTime.setCellValueFactory(new PropertyValueFactory<>("endTimeFormatted"));
 
-        // Tô màu status
+        // THÊM LỆNH NÀY VÀO ĐÂY ĐỂ BẢNG TỰ ĐỘNG GIÃN CỘT
+        tableItems.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+
         colStatus.setCellFactory(col -> new TableCell<>() {
             @Override
             protected void updateItem(String status, boolean empty) {
@@ -99,36 +97,28 @@ public class SellerItemsController implements Initializable {
             }
         });
 
-        task.setOnFailed(e -> showAlert(Alert.AlertType.ERROR, "Lỗi",
-                "Không thể tải danh sách sản phẩm."));
-
+        task.setOnFailed(e -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể tải danh sách sản phẩm."));
         Thread t = new Thread(task, "LoadMyItemsThread");
         t.setDaemon(true);
         t.start();
     }
 
     @FXML
-    public void handleRefresh(ActionEvent event) {
-        loadMyItems();
-    }
+    public void handleRefresh(ActionEvent event) { loadMyItems(); }
 
     @FXML
     public void handleEdit(ActionEvent event) {
         AuctionItem selected = tableItems.getSelectionModel().getSelectedItem();
         if (selected == null) {
-            showAlert(Alert.AlertType.WARNING, "Chưa chọn sản phẩm",
-                    "Vui lòng chọn một sản phẩm trong bảng để sửa.");
+            showAlert(Alert.AlertType.WARNING, "Chưa chọn sản phẩm", "Vui lòng chọn một sản phẩm trong bảng để sửa.");
             return;
         }
         if ("RUNNING".equals(selected.getStatus())) {
-            showAlert(Alert.AlertType.WARNING, "Không thể sửa",
-                    "Không thể sửa sản phẩm đang diễn ra (RUNNING).\nChỉ được sửa khi phiên chưa bắt đầu (OPEN).");
+            showAlert(Alert.AlertType.WARNING, "Không thể sửa", "Không thể sửa sản phẩm đang diễn ra (RUNNING).");
             return;
         }
-        if ("FINISHED".equals(selected.getStatus()) || "PAID".equals(selected.getStatus())
-                || "CANCELED".equals(selected.getStatus())) {
-            showAlert(Alert.AlertType.WARNING, "Không thể sửa",
-                    "Không thể sửa sản phẩm đã kết thúc.");
+        if ("FINISHED".equals(selected.getStatus()) || "PAID".equals(selected.getStatus()) || "CANCELED".equals(selected.getStatus())) {
+            showAlert(Alert.AlertType.WARNING, "Không thể sửa", "Không thể sửa sản phẩm đã kết thúc.");
             return;
         }
 
@@ -150,13 +140,11 @@ public class SellerItemsController implements Initializable {
     public void handleDelete(ActionEvent event) {
         AuctionItem selected = tableItems.getSelectionModel().getSelectedItem();
         if (selected == null) {
-            showAlert(Alert.AlertType.WARNING, "Chưa chọn sản phẩm",
-                    "Vui lòng chọn một sản phẩm trong bảng để xóa.");
+            showAlert(Alert.AlertType.WARNING, "Chưa chọn sản phẩm", "Vui lòng chọn một sản phẩm trong bảng để xóa.");
             return;
         }
         if ("RUNNING".equals(selected.getStatus())) {
-            showAlert(Alert.AlertType.WARNING, "Không thể xóa",
-                    "Không thể xóa sản phẩm đang diễn ra (RUNNING).");
+            showAlert(Alert.AlertType.WARNING, "Không thể xóa", "Không thể xóa sản phẩm đang diễn ra (RUNNING).");
             return;
         }
 
@@ -169,24 +157,19 @@ public class SellerItemsController implements Initializable {
 
         Task<String> task = new Task<>() {
             @Override
-            protected String call() {
-                return ClientService.sendRequest("DELETE_ITEM:" + selected.getId());
-            }
+            protected String call() { return ClientService.sendRequest("DELETE_ITEM:" + selected.getId()); }
         };
 
         task.setOnSucceeded(e -> {
             String response = task.getValue();
             if (response != null && response.startsWith("SUCCESS")) {
-                showAlert(Alert.AlertType.INFORMATION, "Đã xóa",
-                        "Sản phẩm \"" + selected.getName() + "\" đã được xóa.");
+                showAlert(Alert.AlertType.INFORMATION, "Đã xóa", "Sản phẩm \"" + selected.getName() + "\" đã được xóa.");
                 loadMyItems();
             } else {
-                String reason = (response != null && response.startsWith("FAIL:"))
-                        ? response.substring(5) : response;
+                String reason = (response != null && response.startsWith("FAIL:")) ? response.substring(5) : response;
                 showAlert(Alert.AlertType.ERROR, "Xóa thất bại", reason);
             }
         });
-
         Thread t = new Thread(task, "DeleteItemThread");
         t.setDaemon(true);
         t.start();

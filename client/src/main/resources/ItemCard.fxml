@@ -5,23 +5,23 @@
 
 <VBox xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
       fx:controller="com.auction.client.controllers.ItemCardController"
-      prefWidth="220.0" prefHeight="330.0" spacing="10"
-      style="-fx-background-color: #111111; -fx-background-radius: 12; -fx-padding: 15; -fx-cursor: hand; -fx-border-color: #222222; -fx-border-radius: 12; -fx-border-width: 1;"
+      maxWidth="Infinity" GridPane.hgrow="ALWAYS" prefHeight="350.0" spacing="12"
+      style="-fx-background-color: #1a1a1a; -fx-background-radius: 15; -fx-padding: 15; -fx-cursor: hand; -fx-border-color: #555555; -fx-border-radius: 15; -fx-border-width: 1.5;"
       fx:id="cardContainer">
 
-    <StackPane prefHeight="150.0" style="-fx-background-color: #000000; -fx-background-radius: 8;">
-        <ImageView fx:id="imgProduct" fitWidth="180.0" fitHeight="140.0" pickOnBounds="true" preserveRatio="true"/>
+    <StackPane prefHeight="170.0" style="-fx-background-color: #000000; -fx-background-radius: 8;">
+        <ImageView fx:id="imgProduct" fitWidth="180.0" fitHeight="160.0" pickOnBounds="true" preserveRatio="true"/>
     </StackPane>
 
     <Label fx:id="lblName" text="Product Name" wrapText="true" maxHeight="45.0" minHeight="45.0"
-           style="-fx-font-size: 14; -fx-font-weight: bold; -fx-text-fill: white;"/>
+           style="-fx-font-size: 15; -fx-font-weight: bold; -fx-text-fill: white;"/>
 
-    <VBox spacing="2">
-        <Label text="Giá hiện tại:" style="-fx-font-size: 11; -fx-text-fill: #9CA3AF;"/>
-        <Label fx:id="lblPrice" text="\$0.00" style="-fx-font-size: 18; -fx-font-weight: 800; -fx-text-fill: #F8C938;"/>
+    <VBox spacing="4">
+        <Label text="Giá hiện tại:" style="-fx-font-size: 12; -fx-text-fill: #9CA3AF;"/>
+        <Label fx:id="lblPrice" text="\$0.00" style="-fx-font-size: 20; -fx-font-weight: 800; -fx-text-fill: #F8C938;"/>
     </VBox>
 
     <Region VBox.vgrow="ALWAYS"/>
 
-    <Label fx:id="lblTime" text="⏱ 00:00:00" style="-fx-font-size: 12; -fx-text-fill: #F8C938; -fx-font-weight: 500;"/>
+    <Label fx:id="lblTime" text="⏱ 00:00:00" style="-fx-font-size: 13; -fx-text-fill: #F8C938; -fx-font-weight: bold;"/>
 </VBox>

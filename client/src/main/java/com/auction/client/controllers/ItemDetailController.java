@@ -33,9 +33,9 @@ import java.util.function.Consumer;
  * Controller màn hình Chi tiết sản phẩm.
  *
  * 3 TÍNH NĂNG MỚI:
- *   1. Đặt giá thật — gọi PLACE_BID lên server, xử lý SUCCESS/FAIL
- *   2. Realtime update — lắng nghe BID_UPDATE / AUCTION_ENDED / TIME_EXTENDED từ server
- *   3. Bid History Chart — LineChart giá theo thời gian, cập nhật live
+ * 1. Đặt giá thật — gọi PLACE_BID lên server, xử lý SUCCESS/FAIL
+ * 2. Realtime update — lắng nghe BID_UPDATE / AUCTION_ENDED / TIME_EXTENDED từ server
+ * 3. Bid History Chart — LineChart giá theo thời gian, cập nhật live
  *
  * FIX: loadProductImage() giờ hỗ trợ load file ảnh ngoài ổ đĩa (uploads/).
  */
@@ -53,6 +53,10 @@ public class ItemDetailController {
     @FXML public ImageView  imgProduct;
     @FXML public TextArea   txtDescription;
     @FXML public LineChart<String, Number> bidChart;
+
+    // --- Các biến cho chức năng Xem thêm ---
+    @FXML public Button btnToggleDescription;
+    private boolean isDescriptionExpanded = false;
 
     // ── State ────────────────────────────────────────────────────────────────
     private AuctionItem currentItem;
@@ -77,10 +81,26 @@ public class ItemDetailController {
         updatePriceUI(item.getCurrentBid(), item.getCurrentHighestBidder());
         updateStatusUI(item.getStatus());
 
+        // --- Logic thiết lập cho ô Mô tả và nút Xem thêm ---
         if (txtDescription != null) {
-            txtDescription.setText(item.getDescription() != null ? item.getDescription() : "");
+            String desc = item.getDescription() != null ? item.getDescription() : "";
+            txtDescription.setText(desc);
             txtDescription.setEditable(false);
             txtDescription.setWrapText(true);
+            txtDescription.setPrefHeight(100); // Chiều cao mặc định (thu gọn)
+
+            if (btnToggleDescription != null) {
+                // Nếu mô tả ngắn, ẩn luôn nút xem thêm
+                if (desc.length() < 150 && desc.split("\n").length < 4) {
+                    btnToggleDescription.setVisible(false);
+                    btnToggleDescription.setManaged(false);
+                } else {
+                    btnToggleDescription.setVisible(true);
+                    btnToggleDescription.setManaged(true);
+                    btnToggleDescription.setText("🔽 Xem thêm");
+                    isDescriptionExpanded = false;
+                }
+            }
         }
 
         loadProductImage(item);
@@ -90,6 +110,24 @@ public class ItemDetailController {
         if (item.getId() > 0) {
             watchItem(item.getId());
             loadBidHistory(item.getId());
+        }
+    }
+
+    // =========================================================================
+    // MỞ RỘNG / THU GỌN MÔ TẢ SẢN PHẨM
+    // =========================================================================
+    @FXML
+    public void handleToggleDescription(ActionEvent event) {
+        if (txtDescription == null || btnToggleDescription == null) return;
+
+        isDescriptionExpanded = !isDescriptionExpanded;
+
+        if (isDescriptionExpanded) {
+            txtDescription.setPrefHeight(350); // Chiều cao khi mở rộng
+            btnToggleDescription.setText("🔼 Thu gọn");
+        } else {
+            txtDescription.setPrefHeight(100); // Quay về chiều cao ban đầu
+            btnToggleDescription.setText("🔽 Xem thêm");
         }
     }
 
@@ -178,10 +216,6 @@ public class ItemDetailController {
     private void handlePushMessage(String msg) {
         if (currentItem == null) return;
 
-        // BUG FIX: Server gửi push message dưới 2 dạng:
-        //   - Plain text: "BID_UPDATE:{...}"  (từ các lệnh trực tiếp)
-        //   - JSON:       {"action":"BID_UPDATE","payload":"{...}"}  (từ broadcastToItemWatchers)
-        // Chuẩn hóa về plain-text trước khi xử lý.
         String action  = null;
         String payload = null;
 
@@ -195,7 +229,6 @@ public class ItemDetailController {
             action  = "TIME_EXTENDED";
             payload = msg.substring("TIME_EXTENDED:".length());
         } else if (msg.startsWith("{")) {
-            // JSON format từ Message.toJson() — parse để lấy action + payload
             try {
                 com.auction.shared.models.Message parsed =
                         com.auction.shared.models.Message.fromJson(msg);
@@ -338,15 +371,12 @@ public class ItemDetailController {
             String status = currentItem.getStatus();
 
             if ("OPEN".equals(status)) {
-                // Phiên chưa bắt đầu: đếm ngược đến startTime
                 long startEpoch = currentItem.getStartTimeEpoch();
                 if (startEpoch <= 0) {
-                    // startTime = 0 nghĩa là bắt đầu ngay khi đăng — không nên xảy ra ở đây
                     lblTime.setText("⏱ Sắp bắt đầu...");
                 } else {
                     long remaining = startEpoch - System.currentTimeMillis();
                     if (remaining <= 0) {
-                        // Đã đến giờ bắt đầu, chờ server chuyển sang RUNNING
                         lblTime.setText("⏱ Đang chờ kích hoạt...");
                     } else {
                         long hours   = remaining / 3_600_000;
@@ -356,7 +386,6 @@ public class ItemDetailController {
                     }
                 }
             } else {
-                // Phiên đang chạy hoặc trạng thái khác: đếm ngược đến endTime
                 long remaining = currentItem.getEndTimeEpoch() - System.currentTimeMillis();
                 if (remaining <= 0) {
                     lblTime.setText("⏱ Đã kết thúc");
@@ -449,10 +478,6 @@ public class ItemDetailController {
 
     /**
      * Load ảnh sản phẩm cho màn hình chi tiết.
-     *
-     * FIX: Trước đây chỉ dùng getClass().getResource() nên không tìm được
-     * file ảnh ngoài ổ đĩa (thư mục uploads/).
-     * Giờ thử load từ File system trước, sau mới fallback về classpath.
      */
     private void loadProductImage(AuctionItem item) {
         if (imgProduct == null) return;

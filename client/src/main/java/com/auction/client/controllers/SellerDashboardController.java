@@ -15,6 +15,7 @@ import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
 import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.HBox;
@@ -36,11 +37,11 @@ import java.util.stream.Collectors;
  * Controller màn hình "Quản lý sản phẩm của tôi" (dành cho Seller).
  *
  * Chức năng:
- *   - Xem toàn bộ sản phẩm mình đã đăng (GET_MY_ITEMS)
- *   - Lọc theo trạng thái (OPEN / RUNNING / FINISHED / ...)
- *   - Sửa sản phẩm ở trạng thái OPEN (navigate đến EditItem.fxml)
- *   - Xóa / Hủy sản phẩm không đang RUNNING (DELETE_ITEM)
- *   - Thống kê nhanh theo trạng thái
+ * - Xem toàn bộ sản phẩm mình đã đăng (GET_MY_ITEMS)
+ * - Lọc theo trạng thái (OPEN / RUNNING / FINISHED / ...)
+ * - Sửa sản phẩm ở trạng thái OPEN (navigate đến EditItem.fxml)
+ * - Xóa / Hủy sản phẩm không đang RUNNING (DELETE_ITEM)
+ * - Thống kê nhanh theo trạng thái
  */
 public class SellerDashboardController implements Initializable {
 
@@ -99,6 +100,9 @@ public class SellerDashboardController implements Initializable {
 
         colStatus.setCellValueFactory(data ->
                 new SimpleStringProperty(translateStatus(data.getValue().getStatus())));
+
+        // THIẾT LẬP TỰ ĐỘNG GIÃN CỘT BẢNG Ở ĐÂY
+        tblItems.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
         // Tô màu ô trạng thái
         colStatus.setCellFactory(col -> new TableCell<>() {
@@ -170,11 +174,6 @@ public class SellerDashboardController implements Initializable {
                 }
             }
         });
-
-        // Style tổng thể cho table
-        tblItems.setStyle(
-                "-fx-background-color: #111111; -fx-text-fill: white;" +
-                        "-fx-table-cell-border-color: #222222;");
     }
 
     // ── Bộ lọc trạng thái ─────────────────────────────────────────────────
@@ -313,6 +312,29 @@ public class SellerDashboardController implements Initializable {
     }
 
     // ── Handlers FXML ─────────────────────────────────────────────────────
+
+    @FXML
+    public void handleWallet(ActionEvent event) {
+        try {
+            // Khởi tạo loader và controller thủ công để tránh lỗi "No controller specified"
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/Wallet.fxml"));
+
+            WalletController walletController = new WalletController();
+            loader.setController(walletController);
+
+            // Load giao diện và thiết lập Scene
+            Parent root = loader.load();
+            Stage stage = (Stage) ((javafx.scene.Node) event.getSource()).getScene().getWindow();
+
+            stage.setScene(new Scene(root, stage.getWidth(), stage.getHeight()));
+            stage.setTitle("Ví của tôi");
+            stage.show();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Lỗi mở Ví", "Không thể mở màn hình Ví:\n" + ex.getMessage());
+        }
+    }
+
     @FXML
     public void handleCreateNew(ActionEvent event) {
         try {

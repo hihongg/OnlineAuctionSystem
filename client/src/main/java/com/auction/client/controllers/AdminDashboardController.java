@@ -84,6 +84,7 @@ public class AdminDashboardController implements Initializable {
     private final Gson gson = new Gson();
     private final SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
 
+
     // =========================================================================
     // KHỞI TẠO
     // =========================================================================
@@ -125,6 +126,11 @@ public class AdminDashboardController implements Initializable {
         bindColumn(colReqAmount,   2);
         bindColumn(colReqStatus,   3);
         bindColumn(colReqTime,     4);
+
+        // THÊM 3 LỆNH NÀY VÀO ĐÂY ĐỂ CÁC BẢNG TỰ ĐỘNG GIÃN CỘT:
+        if (tblUsers != null) tblUsers.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        if (tblItems != null) tblItems.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        if (tblDepositRequests != null) tblDepositRequests.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
         // Khi chọn dòng trong bảng yêu cầu → hiển thị thông tin
         if (tblDepositRequests != null) {

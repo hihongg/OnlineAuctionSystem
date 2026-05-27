@@ -3,59 +3,33 @@
 <?import javafx.scene.control.*?>
 <?import javafx.geometry.Insets?>
 
-<!--
-    AdminDashboard.fxml — Màn hình quản trị hệ thống (Admin only)
-    Gồm 3 tab:
-      - Quản lý Người dùng : xem danh sách, đổi role, xóa
-      - Quản lý Sản phẩm  : xem tất cả item, đổi trạng thái
-      - Yêu cầu Nạp tiền  : duyệt/từ chối, điều chỉnh số dư trực tiếp
--->
 <VBox prefHeight="700.0" prefWidth="1050.0" spacing="0"
       xmlns="http://javafx.com/javafx/17"
       xmlns:fx="http://javafx.com/fxml/1"
       fx:controller="com.auction.client.controllers.AdminDashboardController"
-      style="-fx-background-color: #F0F2F5;">
+      style="-fx-background-color: #000000;"
+      stylesheets="@dark-theme.css">
 
-    <!-- ── Header ──────────────────────────────────────────────────── -->
     <HBox alignment="CENTER_LEFT" spacing="15"
-          style="-fx-background-color: #2c3e50; -fx-padding: 18 25 18 25;">
-        <Label text="⚙ Admin Panel"
-               style="-fx-font-size: 22; -fx-font-weight: bold; -fx-text-fill: white;"/>
+          style="-fx-background-color: #111111; -fx-padding: 18 25 18 25; -fx-border-color: #222222; -fx-border-width: 0 0 1 0;">
+        <Label text="⚙ ADMIN PANEL" style="-fx-font-size: 22; -fx-font-weight: bold; -fx-text-fill: #F8C938;"/>
         <Region HBox.hgrow="ALWAYS"/>
-        <Label fx:id="lblAdminName"
-               style="-fx-font-size: 13; -fx-text-fill: #bdc3c7;"/>
-        <Button text="Ví của tôi" onAction="#handleWallet"
-                style="-fx-background-color: #27ae60; -fx-text-fill: white;
-                       -fx-font-weight: bold; -fx-padding: 7 18 7 18; -fx-background-radius: 6;
-                       -fx-cursor: hand;"/>
-        <Button text="&#x2B05; Dashboard" onAction="#handleBackToDashboard"
-                style="-fx-background-color: #3498db; -fx-text-fill: white;
-                       -fx-font-weight: bold; -fx-padding: 7 18 7 18; -fx-background-radius: 6;
-                       -fx-cursor: hand;"/>
+        <Label fx:id="lblAdminName" style="-fx-font-size: 13; -fx-text-fill: #aaaaaa;"/>
+        <Button text="Ví của tôi" onAction="#handleWallet" style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 18 7 18; -fx-background-radius: 20; -fx-cursor: hand;"/>
+        <Button text="Dashboard" onAction="#handleBackToDashboard" style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 18 7 18; -fx-background-radius: 20; -fx-cursor: hand;"/>
     </HBox>
 
-    <!-- ── TabPane ─────────────────────────────────────────────────── -->
-    <TabPane VBox.vgrow="ALWAYS" tabClosingPolicy="UNAVAILABLE"
-             style="-fx-background-color: #F0F2F5;">
+    <TabPane VBox.vgrow="ALWAYS" tabClosingPolicy="UNAVAILABLE">
 
-        <!-- ═══════════════════════════════════════════════════════════
-             TAB 1: QUẢN LÝ NGƯỜI DÙNG
-             ═══════════════════════════════════════════════════════════ -->
         <Tab text="👥  Quản lý Người dùng">
-            <VBox spacing="15" style="-fx-padding: 20;">
-
+            <VBox spacing="15" style="-fx-padding: 20; -fx-background-color: #000000;">
                 <HBox alignment="CENTER_LEFT" spacing="12">
-                    <Label text="Danh sách tài khoản"
-                           style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+                    <Label text="Danh sách tài khoản" style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: white;"/>
                     <Region HBox.hgrow="ALWAYS"/>
-                    <Button text="🔄 Tải lại" onAction="#handleLoadUsers"
-                            style="-fx-background-color: #27ae60; -fx-text-fill: white;
-                                   -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6;
-                                   -fx-cursor: hand;"/>
+                    <Button text="🔄 Tải lại" onAction="#handleLoadUsers" style="-fx-background-color: #222222; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6; -fx-cursor: hand;"/>
                 </HBox>
 
-                <TableView fx:id="tblUsers" VBox.vgrow="ALWAYS"
-                           style="-fx-background-radius: 8; -fx-border-radius: 8;">
+                <TableView fx:id="tblUsers" VBox.vgrow="ALWAYS">
                     <columns>
                         <TableColumn fx:id="colUserId"       text="ID"       prefWidth="55"/>
                         <TableColumn fx:id="colUsername"     text="Username" prefWidth="170"/>
@@ -64,60 +38,29 @@
                         <TableColumn fx:id="colBalance"      text="Số dư ($)" prefWidth="110"/>
                         <TableColumn fx:id="colUserCreated"  text="Ngày tạo" prefWidth="150"/>
                     </columns>
-                    <placeholder>
-                        <Label text="Chưa có dữ liệu. Nhấn 'Tải lại' để cập nhật."
-                               style="-fx-text-fill: #95a5a6;"/>
-                    </placeholder>
                 </TableView>
 
-                <HBox spacing="12" alignment="CENTER_LEFT"
-                      style="-fx-background-color: white; -fx-padding: 15;
-                             -fx-background-radius: 8;
-                             -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.07), 5, 0, 0, 2);">
-                    <Label text="Đổi Role:"
-                           style="-fx-font-weight: bold; -fx-font-size: 14;"/>
-                    <ComboBox fx:id="cmbNewRole" prefWidth="150" style="-fx-font-size: 13;"/>
-                    <Button text="✏ Áp dụng" onAction="#handleChangeRole"
-                            style="-fx-background-color: #f39c12; -fx-text-fill: white;
-                                   -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6;
-                                   -fx-cursor: hand;"/>
+                <HBox spacing="12" alignment="CENTER_LEFT" style="-fx-background-color: #111111; -fx-padding: 15; -fx-background-radius: 8; -fx-border-color: #222222; -fx-border-width: 1;">
+                    <Label text="Đổi Role:" style="-fx-font-weight: bold; -fx-font-size: 14; -fx-text-fill: white;"/>
+                    <ComboBox fx:id="cmbNewRole" prefWidth="150" style="-fx-font-size: 13; -fx-background-color: #000000; -fx-text-fill: white; -fx-border-color: #222222;"/>
+                    <Button text="✏ Áp dụng" onAction="#handleChangeRole" style="-fx-background-color: #f39c12; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6; -fx-cursor: hand;"/>
                     <Region HBox.hgrow="ALWAYS"/>
-                    <Button text="🗑 Xóa tài khoản" onAction="#handleDeleteUser"
-                            style="-fx-background-color: #e74c3c; -fx-text-fill: white;
-                                   -fx-font-weight: bold; -fx-padding: 7 18 7 18; -fx-background-radius: 6;
-                                   -fx-cursor: hand;"/>
+                    <Button text="🗑 Xóa tài khoản" onAction="#handleDeleteUser" style="-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 18 7 18; -fx-background-radius: 6; -fx-cursor: hand;"/>
                 </HBox>
-
-                <Label fx:id="lblUserMsg" text=""
-                       style="-fx-font-size: 13; -fx-font-style: italic;" wrapText="true"/>
-
+                <Label fx:id="lblUserMsg" text="" style="-fx-font-size: 13; -fx-font-style: italic;" wrapText="true"/>
             </VBox>
         </Tab>
 
-        <!-- ═══════════════════════════════════════════════════════════
-             TAB 2: QUẢN LÝ SẢN PHẨM
-             ═══════════════════════════════════════════════════════════ -->
         <Tab text="📦  Quản lý Sản phẩm">
-            <VBox spacing="15" style="-fx-padding: 20;">
-
+            <VBox spacing="15" style="-fx-padding: 20; -fx-background-color: #000000;">
                 <HBox alignment="CENTER_LEFT" spacing="12">
-                    <Label text="Tất cả sản phẩm đấu giá"
-                           style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+                    <Label text="Tất cả sản phẩm đấu giá" style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: white;"/>
                     <Region HBox.hgrow="ALWAYS"/>
-                    <Button text="🗑 Xóa tất cả đã kết thúc" onAction="#handleDeleteAllFinished"
-                            style="-fx-background-color: #e67e22; -fx-text-fill: white;
-                                   -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6;
-                                   -fx-cursor: hand;">
-                        <tooltip><Tooltip text="Xóa tất cả sản phẩm có trạng thái FINISHED / PAID / CANCELED"/></tooltip>
-                    </Button>
-                    <Button text="🔄 Tải lại" onAction="#handleLoadItems"
-                            style="-fx-background-color: #27ae60; -fx-text-fill: white;
-                                   -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6;
-                                   -fx-cursor: hand;"/>
+                    <Button text="🗑 Xóa tất cả đã kết thúc" onAction="#handleDeleteAllFinished" style="-fx-background-color: #e67e22; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6; -fx-cursor: hand;"/>
+                    <Button text="🔄 Tải lại" onAction="#handleLoadItems" style="-fx-background-color: #222222; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6; -fx-cursor: hand;"/>
                 </HBox>
 
-                <TableView fx:id="tblItems" VBox.vgrow="ALWAYS"
-                           style="-fx-background-radius: 8; -fx-border-radius: 8;">
+                <TableView fx:id="tblItems" VBox.vgrow="ALWAYS">
                     <columns>
                         <TableColumn fx:id="colItemId"       text="ID"          prefWidth="55"/>
                         <TableColumn fx:id="colItemName"     text="Tên sản phẩm" prefWidth="230"/>
@@ -126,62 +69,29 @@
                         <TableColumn fx:id="colItemStatus"   text="Trạng thái"   prefWidth="120"/>
                         <TableColumn fx:id="colSellerId"     text="Seller ID"    prefWidth="90"/>
                     </columns>
-                    <placeholder>
-                        <Label text="Chưa có dữ liệu. Nhấn 'Tải lại' để cập nhật."
-                               style="-fx-text-fill: #95a5a6;"/>
-                    </placeholder>
                 </TableView>
 
-                <HBox spacing="12" alignment="CENTER_LEFT"
-                      style="-fx-background-color: white; -fx-padding: 15;
-                             -fx-background-radius: 8;
-                             -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.07), 5, 0, 0, 2);">
-                    <Label text="Đổi trạng thái:"
-                           style="-fx-font-weight: bold; -fx-font-size: 14;"/>
-                    <ComboBox fx:id="cmbItemStatus" prefWidth="160" style="-fx-font-size: 13;"/>
-                    <Button text="✏ Áp dụng" onAction="#handleChangeItemStatus"
-                            style="-fx-background-color: #f39c12; -fx-text-fill: white;
-                                   -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6;
-                                   -fx-cursor: hand;"/>
+                <HBox spacing="12" alignment="CENTER_LEFT" style="-fx-background-color: #111111; -fx-padding: 15; -fx-background-radius: 8; -fx-border-color: #222222; -fx-border-width: 1;">
+                    <Label text="Đổi trạng thái:" style="-fx-font-weight: bold; -fx-font-size: 14; -fx-text-fill: white;"/>
+                    <ComboBox fx:id="cmbItemStatus" prefWidth="160" style="-fx-font-size: 13; -fx-background-color: #000000; -fx-text-fill: white; -fx-border-color: #222222;"/>
+                    <Button text="✏ Áp dụng" onAction="#handleChangeItemStatus" style="-fx-background-color: #f39c12; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6; -fx-cursor: hand;"/>
                     <Region HBox.hgrow="ALWAYS"/>
-                    <Button text="⚡ Xóa buộc sản phẩm" onAction="#handleDeleteItem"
-                            style="-fx-background-color: #e74c3c; -fx-text-fill: white;
-                                   -fx-font-weight: bold; -fx-padding: 7 18 7 18; -fx-background-radius: 6;
-                                   -fx-cursor: hand;">
-                        <tooltip><Tooltip text="Xóa sản phẩm đang chọn (kể cả RUNNING — sẽ thông báo người dùng)"/></tooltip>
-                    </Button>
+                    <Button text="⚡ Xóa buộc sản phẩm" onAction="#handleDeleteItem" style="-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 18 7 18; -fx-background-radius: 6; -fx-cursor: hand;"/>
                 </HBox>
-
-                <Label fx:id="lblItemMsg" text=""
-                       style="-fx-font-size: 13; -fx-font-style: italic;" wrapText="true"/>
-
+                <Label fx:id="lblItemMsg" text="" style="-fx-font-size: 13; -fx-font-style: italic;" wrapText="true"/>
             </VBox>
         </Tab>
 
-        <!-- ═══════════════════════════════════════════════════════════
-             TAB 3: YÊU CẦU NẠP TIỀN
-             ═══════════════════════════════════════════════════════════ -->
         <Tab text="💰  Yêu cầu Nạp tiền">
-            <VBox spacing="15" style="-fx-padding: 20;">
-
-                <!-- ── Phần A: Danh sách yêu cầu chờ duyệt ─────────── -->
+            <VBox spacing="15" style="-fx-padding: 20; -fx-background-color: #000000;">
                 <HBox alignment="CENTER_LEFT" spacing="12">
-                    <Label text="Danh sách yêu cầu nạp tiền"
-                           style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
-                    <Label fx:id="lblPendingBadge" text=""
-                           style="-fx-background-color: #e74c3c; -fx-text-fill: white;
-                                  -fx-font-weight: bold; -fx-font-size: 12;
-                                  -fx-padding: 2 8 2 8; -fx-background-radius: 10;"/>
+                    <Label text="Danh sách yêu cầu nạp tiền" style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: white;"/>
+                    <Label fx:id="lblPendingBadge" text="" style="-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12; -fx-padding: 2 8 2 8; -fx-background-radius: 10;"/>
                     <Region HBox.hgrow="ALWAYS"/>
-                    <Button text="🔄 Tải lại" onAction="#handleLoadDepositRequests"
-                            style="-fx-background-color: #27ae60; -fx-text-fill: white;
-                                   -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6;
-                                   -fx-cursor: hand;"/>
+                    <Button text="🔄 Tải lại" onAction="#handleLoadDepositRequests" style="-fx-background-color: #222222; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 15 7 15; -fx-background-radius: 6; -fx-cursor: hand;"/>
                 </HBox>
 
-                <!-- Bảng danh sách yêu cầu -->
-                <TableView fx:id="tblDepositRequests" prefHeight="280.0"
-                           style="-fx-background-radius: 8; -fx-border-radius: 8;">
+                <TableView fx:id="tblDepositRequests" prefHeight="280.0">
                     <columns>
                         <TableColumn fx:id="colReqId"        text="Mã YC"    prefWidth="70"/>
                         <TableColumn fx:id="colReqUsername"  text="Username" prefWidth="180"/>
@@ -189,76 +99,27 @@
                         <TableColumn fx:id="colReqStatus"    text="Trạng thái" prefWidth="130"/>
                         <TableColumn fx:id="colReqTime"      text="Thời gian"  prefWidth="200"/>
                     </columns>
-                    <placeholder>
-                        <Label text="Không có yêu cầu nào. Nhấn 'Tải lại' để kiểm tra."
-                               style="-fx-text-fill: #95a5a6;"/>
-                    </placeholder>
                 </TableView>
 
-                <!-- Nút Duyệt / Từ chối -->
-                <HBox spacing="12" alignment="CENTER_LEFT"
-                      style="-fx-background-color: white; -fx-padding: 15;
-                             -fx-background-radius: 8;
-                             -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.07), 5, 0, 0, 2);">
-                    <Label text="Yêu cầu đang chọn:"
-                           style="-fx-font-weight: bold; -fx-font-size: 14;"/>
-                    <Label fx:id="lblSelectedReq" text="(chưa chọn)"
-                           style="-fx-font-size: 13; -fx-text-fill: #7f8c8d;"/>
+                <HBox spacing="12" alignment="CENTER_LEFT" style="-fx-background-color: #111111; -fx-padding: 15; -fx-background-radius: 8; -fx-border-color: #222222; -fx-border-width: 1;">
+                    <Label text="Yêu cầu đang chọn:" style="-fx-font-weight: bold; -fx-font-size: 14; -fx-text-fill: white;"/>
+                    <Label fx:id="lblSelectedReq" text="(chưa chọn)" style="-fx-font-size: 13; -fx-text-fill: #F8C938;"/>
                     <Region HBox.hgrow="ALWAYS"/>
-                    <Button text="✅ Duyệt" onAction="#handleApproveDeposit"
-                            style="-fx-background-color: #27ae60; -fx-text-fill: white;
-                                   -fx-font-weight: bold; -fx-padding: 8 22 8 22; -fx-background-radius: 6;
-                                   -fx-cursor: hand;"/>
-                    <Button text="❌ Từ chối" onAction="#handleRejectDeposit"
-                            style="-fx-background-color: #e74c3c; -fx-text-fill: white;
-                                   -fx-font-weight: bold; -fx-padding: 8 22 8 22; -fx-background-radius: 6;
-                                   -fx-cursor: hand;"/>
+                    <Button text="✅ Duyệt" onAction="#handleApproveDeposit" style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 22 8 22; -fx-background-radius: 6; -fx-cursor: hand;"/>
+                    <Button text="❌ Từ chối" onAction="#handleRejectDeposit" style="-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 22 8 22; -fx-background-radius: 6; -fx-cursor: hand;"/>
                 </HBox>
-
-                <!-- Thông báo duyệt/từ chối -->
-                <Label fx:id="lblDepositMsg" text=""
-                       style="-fx-font-size: 13; -fx-font-style: italic;" wrapText="true"/>
-
-                <!-- Divider -->
-                <Separator/>
-
-                <!-- ── Phần B: Điều chỉnh số dư trực tiếp ──────────── -->
-                <Label text="Điều chỉnh số dư thủ công"
-                       style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
-
-                <HBox spacing="12" alignment="CENTER_LEFT"
-                      style="-fx-background-color: white; -fx-padding: 18;
-                             -fx-background-radius: 8;
-                             -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.07), 5, 0, 0, 2);">
-                    <Label text="Username:"
-                           style="-fx-font-weight: bold; -fx-font-size: 14; -fx-min-width: 100;"/>
-                    <TextField fx:id="txtAdjustUsername" promptText="Nhập username..."
-                               prefWidth="200" style="-fx-font-size: 13;"/>
-
-                    <Label text="Số dư mới ($):"
-                           style="-fx-font-weight: bold; -fx-font-size: 14; -fx-min-width: 115;"/>
-                    <TextField fx:id="txtAdjustAmount" promptText="VD: 50000"
-                               prefWidth="160" style="-fx-font-size: 13;"/>
-
-                    <Button text="💾 Cập nhật" onAction="#handleAdjustBalance"
-                            style="-fx-background-color: #8e44ad; -fx-text-fill: white;
-                                   -fx-font-weight: bold; -fx-padding: 8 22 8 22; -fx-background-radius: 6;
-                                   -fx-cursor: hand;"/>
-
-                    <Button text="🔍 Xem số dư hiện tại" onAction="#handleFillFromSelected"
-                            style="-fx-background-color: #2980b9; -fx-text-fill: white;
-                                   -fx-font-weight: bold; -fx-padding: 8 18 8 18; -fx-background-radius: 6;
-                                   -fx-cursor: hand;">
-                        <tooltip><Tooltip text="Điền thông tin từ dòng đang chọn trong bảng Người dùng (Tab 1)"/></tooltip>
-                    </Button>
+                <Separator style="-fx-background-color: #222222;"/>
+                <Label text="Điều chỉnh số dư thủ công" style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: white;"/>
+                <HBox spacing="12" alignment="CENTER_LEFT" style="-fx-background-color: #111111; -fx-padding: 18; -fx-background-radius: 8; -fx-border-color: #222222; -fx-border-width: 1;">
+                    <Label text="Username:" style="-fx-font-weight: bold; -fx-font-size: 14; -fx-min-width: 100; -fx-text-fill: white;"/>
+                    <TextField fx:id="txtAdjustUsername" promptText="Nhập username..." prefWidth="200" style="-fx-font-size: 13; -fx-background-color: #000000; -fx-text-fill: white; -fx-border-color: #222222;"/>
+                    <Label text="Số dư mới ($):" style="-fx-font-weight: bold; -fx-font-size: 14; -fx-min-width: 115; -fx-text-fill: white;"/>
+                    <TextField fx:id="txtAdjustAmount" promptText="VD: 50000" prefWidth="160" style="-fx-font-size: 13; -fx-background-color: #000000; -fx-text-fill: white; -fx-border-color: #222222;"/>
+                    <Button text="💾 Cập nhật" onAction="#handleAdjustBalance" style="-fx-background-color: #8e44ad; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 22 8 22; -fx-background-radius: 6; -fx-cursor: hand;"/>
+                    <Button text="🔍 Xem số dư hiện tại" onAction="#handleFillFromSelected" style="-fx-background-color: #2980b9; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 18 8 18; -fx-background-radius: 6; -fx-cursor: hand;"/>
                 </HBox>
-
-                <!-- Thông báo adjust -->
-                <Label fx:id="lblAdjustMsg" text=""
-                       style="-fx-font-size: 13; -fx-font-style: italic;" wrapText="true"/>
-
+                <Label fx:id="lblAdjustMsg" text="" style="-fx-font-size: 13; -fx-font-style: italic;" wrapText="true"/>
             </VBox>
         </Tab>
-
     </TabPane>
 </VBox>

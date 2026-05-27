@@ -19,7 +19,11 @@ public class ClientApp extends Application {
 
         primaryStage.setTitle("Online Auction System");
         primaryStage.setScene(new Scene(root, 800, 500));
-        primaryStage.centerOnScreen();
+
+        // ==========================================
+        // THIẾT LẬP PHÓNG TO TỐI ĐA (MAXIMIZED)
+        // ==========================================
+        primaryStage.setMaximized(true);
 
         // 3. Ngắt kết nối sạch khi người dùng đóng cửa sổ
         primaryStage.setOnCloseRequest(event -> ClientService.disconnect());
