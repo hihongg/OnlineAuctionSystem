@@ -52,7 +52,6 @@ Hệ thống cho phép nhiều người dùng đồng thời tham gia đấu gi�
 
 ### Chức năng nâng cao
 
-- [x] **Auto-Bidding** — `maxBid` + `increment`; ưu tiên theo thời điểm đăng ký; per-item lock
 - [x] **Anti-Sniping** — Bid trong 60s cuối → gia hạn thêm 5 phút; broadcast `TIME_EXTENDED`
 - [x] **Realtime Update** — Observer qua Socket: `broadcastToItemWatchers()`, không polling
 - [x] **Bid History Visualization** — `LineChart` (JavaFX) cập nhật tức thì theo timestamp
