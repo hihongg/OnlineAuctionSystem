@@ -256,5 +256,5 @@ mvn -pl client javafx:run
 
 | Tài liệu | Liên kết |
 |---|---|
-| 📄 Báo cáo PDF | [`docs/BaoCao_NhomXX.pdf`](docs/BaoCao_NhomXX.pdf) |
-| 🎬 Video demo | [Link YouTube / Google Drive](#) |
+|  Báo cáo PDF | [`docs/BaoCao_NhomXX.pdf`](docs/BaoCao_NhomXX.pdf) |
+|  Video demo | https://drive.google.com/file/d/1nahYE5dudB9tEPt4Rm7oUR4ymT9LeemN/view?usp=sharing(#) |
